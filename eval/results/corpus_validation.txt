@@ -1,0 +1,41 @@
+======================================================================
+EvidenceAI Corpus Validation Report
+======================================================================
+Corpus file: F:\netlink\evidence_ai\data\corpus.json
+Total papers: 66
+
+-- Papers per source_database --
+  pmc          59
+  psyarxiv     7
+
+-- Missing required fields --
+  missing abstract: 0
+  missing authors:  0
+  missing year:     0
+  missing DOI:      6 (expected for many preprints/sources)
+
+-- Abstract length distribution (characters) --
+  min: 931  max: 3083  median: 1956  mean: 1971
+  flagged as likely truncated/failed parse (< 200 chars): 0
+
+-- Year distribution --
+  range: 2022-2026
+    2022: # (1)
+    2024: # (1)
+    2025: ## (2)
+    2026: ############################################################## (62)
+
+-- Preprint vs peer-reviewed --
+  preprint (not peer reviewed): 7
+  peer-reviewed:                59
+
+-- Suspected duplicates (fuzzy title match >= 90%) --
+  none found
+
+-- PASS/FAIL --
+  OK: 66 papers >= 50
+  OK: all papers have a non-empty abstract
+  OK: all papers have a source_url
+
+VERDICT: PASS
+======================================================================
