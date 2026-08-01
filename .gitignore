@@ -1,0 +1,42 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Environment ---
+.env
+backend/.env
+
+# --- Node / frontend ---
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+.env.local
+.env.*.local
+
+# --- Data (raw + generated index; corpus.json and eval/claims.csv are committed deliverables) ---
+data/raw/
+data/index/
+
+# --- Model checkpoints ---
+*.bin
+*.safetensors
+notebooks/checkpoints/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
