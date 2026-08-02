@@ -49,12 +49,26 @@ class StanceResult:
 
 
 class StanceClassifier:
-    def __init__(self) -> None:
-        model_path = Path(settings.STANCE_MODEL_PATH)
-        source = str(model_path) if model_path.exists() else settings.NLI_BASELINE_MODEL
+    def __init__(self, model_path: str | None = None) -> None:
+        """model_path overrides the usual STANCE_MODEL_PATH/NLI_BASELINE_MODEL
+        resolution — used by pipeline.compare_classifiers to load two specific
+        models side by side. Omit it for normal (production) resolution."""
+        if model_path is not None:
+            source = model_path
+        else:
+            resolved_path = Path(settings.STANCE_MODEL_PATH)
+            source = str(resolved_path) if resolved_path.exists() else settings.NLI_BASELINE_MODEL
 
         self.tokenizer = AutoTokenizer.from_pretrained(source)
-        self.model = AutoModelForSequenceClassification.from_pretrained(source)
+        # low_cpu_mem_usage avoids briefly double-allocating the full weight
+        # tensors during load. dtype=torch.float32 (explicit, not "auto") skips
+        # transformers' dtype auto-detection probe, which otherwise mmaps the
+        # checkpoint via safe_open() regardless of low_cpu_mem_usage — on a
+        # memory-constrained machine that probe alone can hit the OS commit
+        # limit before the model is even usable.
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            source, low_cpu_mem_usage=True, dtype=torch.float32
+        )
         self.model.eval()
 
         id2label: dict[int, Stance] = {}

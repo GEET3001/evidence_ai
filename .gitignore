@@ -29,6 +29,7 @@ out/
 # --- Data (raw + generated index; corpus.json and eval/claims.csv are committed deliverables) ---
 data/raw/
 data/index/
+data/scifact/
 
 # --- Model checkpoints ---
 *.bin
