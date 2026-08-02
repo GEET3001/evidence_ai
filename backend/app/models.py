@@ -65,6 +65,13 @@ class PublicationTier(str, Enum):
     OTHER = "OTHER"
 
 
+class OpenAlexConcept(BaseModel):
+    """A topic OpenAlex assigns to a work, with its confidence score."""
+
+    display_name: str
+    score: float
+
+
 class Paper(BaseModel):
     """A source research paper in the corpus."""
 
@@ -75,6 +82,12 @@ class Paper(BaseModel):
     abstract: str
     source_url: str
     source_database: SourceDatabase
+    all_source_databases: list[SourceDatabase] = Field(
+        default_factory=list,
+        description="Every source_database this paper was independently found in "
+        "(see app/ingestion/merge_corpus.py). Populated for all papers post-merge, "
+        "not just ones that were actually deduplicated across sources.",
+    )
     publication_type: str | None = Field(
         default=None, description='e.g. "RCT", "meta-analysis", "observational"'
     )
@@ -88,11 +101,37 @@ class Paper(BaseModel):
     )
     journal: str | None = None
     pmid: str | None = None
+    contested_topic: str | None = Field(
+        default=None,
+        description="Slug identifying a genuinely-contested claim this paper was "
+        "retrieved for (see app/ingestion/contested_topics.py), for building eval "
+        "claims that exercise the CONFLICTING verdict. None for ordinary corpus papers.",
+    )
     is_preprint: bool = Field(
         description="True if not peer reviewed (e.g. psyarxiv, medrxiv postings)."
     )
     doi: str | None = None
     retrieved_at: datetime
+
+    # --- OpenAlex enrichment (see app/ingestion/openalex_enrich.py) ---
+    openalex_checked: bool = Field(
+        default=False,
+        description="Whether this paper has actually been looked up in OpenAlex. "
+        "is_retracted/cited_by_count etc. are only verified signals when this is "
+        "True — False means 'not checked', not 'checked and clean'.",
+    )
+    is_retracted: bool = Field(
+        default=False,
+        description="OpenAlex retraction flag. Always a definite bool (never null) "
+        "so it can't be silently misread as 'not retracted' — check "
+        "openalex_checked before trusting a False here.",
+    )
+    cited_by_count: int | None = None
+    is_open_access: bool | None = None
+    open_access_url: str | None = None
+    concepts: list[OpenAlexConcept] = Field(default_factory=list)
+    referenced_works_count: int | None = None
+    author_institutions: list[str] = Field(default_factory=list)
 
 
 class Passage(BaseModel):

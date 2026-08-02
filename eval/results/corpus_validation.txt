@@ -2,9 +2,10 @@
 EvidenceAI Corpus Validation Report
 ======================================================================
 Corpus file: F:\netlink\evidence_ai\data\corpus.json
-Total papers: 66
+Total papers: 183
 
--- Papers per source_database --
+-- Papers per source_database (counts every source a merged paper was found in) --
+  pubmed       118
   pmc          59
   psyarxiv     7
 
@@ -15,27 +16,75 @@ Total papers: 66
   missing DOI:      6 (expected for many preprints/sources)
 
 -- Abstract length distribution (characters) --
-  min: 931  max: 3083  median: 1956  mean: 1971
+  min: 389  max: 5897  median: 1957  mean: 2094
   flagged as likely truncated/failed parse (< 200 chars): 0
 
 -- Year distribution --
-  range: 2022-2026
-    2022: # (1)
-    2024: # (1)
-    2025: ## (2)
-    2026: ############################################################## (62)
+  range: 2014-2026
+    2014: # (1)
+    2015: # (1)
+    2021: ### (3)
+    2022: ####### (7)
+    2023: ##### (5)
+    2024: ##### (5)
+    2025: ############################## (30)
+    2026: ################################################################################################################################### (131)
 
 -- Preprint vs peer-reviewed --
-  preprint (not peer reviewed): 7
-  peer-reviewed:                59
+  preprint (not peer reviewed): 7 (4%)
+  peer-reviewed:                176 (96%)
+
+-- Evidence tier distribution (flag if any tier has < 10) --
+  UNCLASSIFIED         65
+  RCT                  37
+  OTHER                37
+  META_ANALYSIS        21
+  CROSS_SECTIONAL      13
+  SYSTEMATIC_REVIEW    5
+  FLAG: tier SYSTEMATIC_REVIEW has only 5 papers (< 10)
+  COHORT               4
+  FLAG: tier COHORT has only 4 papers (< 10)
+  CASE_REPORT          1
+  FLAG: tier CASE_REPORT has only 1 papers (< 10)
+  (7 distinct tiers represented, excluding UNCLASSIFIED — UNCLASSIFIED papers predate publication_tier or came from a source that doesn't populate it, e.g. Day 1 PMC/PsyArXiv)
+
+-- Estimated topic coverage (keyword-based content classification, NOT ingestion provenance — flag if < 10) --
+  depression                   78
+  anxiety                      54
+  digital_mental_health        32
+  sleep                        25
+  social_media_mental_health   23
+  mindfulness                  19
+  exercise_mental_health       19
+  adhd                         18
+  cbt                          9
+  FLAG: topic cbt has only 9 matching papers (< 10)
+
+-- publication_type population --
+  overall: 176/183 (96%)
+  PubMed-sourced: 118/118 (100%)
+
+-- Retraction status (OpenAlex) --
+  checked against OpenAlex: 178/183
+  retracted:                0
+
+-- Contested-topic coverage --
+  cannabis_psychosis_risk                  15 papers
+  mindfulness_adhd_symptoms                15 papers
+  psychological_debriefing_ptsd_prevention 14 papers
+  social_media_adolescent_mental_health    16 papers
+  ssri_mild_depression_efficacy            14 papers
+  (paper count only — whether both sides are ACTUALLY represented requires reading abstracts or the stance classifier; not re-verified automatically here to avoid asserting an unread paper's stance)
 
 -- Suspected duplicates (fuzzy title match >= 90%) --
   none found
 
 -- PASS/FAIL --
-  OK: 66 papers >= 50
+  OK: 183 papers >= 120
   OK: all papers have a non-empty abstract
   OK: all papers have a source_url
+  OK: 7 evidence tiers represented (>= 3)
+  OK: no topic has fewer than 8 papers
 
 VERDICT: PASS
 ======================================================================

@@ -17,9 +17,36 @@ from difflib import SequenceMatcher
 
 from app.config import settings
 
-MIN_TOTAL_PAPERS = 50
+MIN_TOTAL_PAPERS = 120
 SHORT_ABSTRACT_THRESHOLD_CHARS = 200
 FUZZY_TITLE_MATCH_THRESHOLD = 0.90
+
+MIN_TIERS_REPRESENTED = 3  # hard PASS/FAIL gate: distinct evidence tiers with >=1 paper
+TIER_FLAG_THRESHOLD = 10  # informational flag only, not a PASS/FAIL gate
+
+TOPIC_FLAG_THRESHOLD = 10  # informational flag only
+TOPIC_FAIL_THRESHOLD = 8  # hard PASS/FAIL gate
+
+# Topic coverage is estimated from title/abstract/MeSH keyword matching, NOT from
+# ingestion-time provenance — no scraper in this project tags which search query
+# found a given paper, and pmc_scraper/preprint_scraper (Day 1) used a different,
+# free-text topic list than pubmed_client's MeSH topics (Day 2) anyway. This is
+# a content classification of what the corpus actually covers, not a record of
+# how each paper was found. Keep that distinction in mind when reading it.
+TOPIC_KEYWORDS: dict[str, list[str]] = {
+    "depression": [r"depress"],
+    "anxiety": [r"anxiety", r"anxious"],
+    "mindfulness": [r"mindful"],
+    "adhd": [r"adhd", r"attention.deficit", r"hyperactivity"],
+    "sleep": [r"sleep", r"insomnia"],
+    "social_media_mental_health": [r"social media", r"smartphone", r"screen time"],
+    "cbt": [r"cognitive.behaviora?l therapy", r"\bcbt\b"],
+    "exercise_mental_health": [r"exercise", r"physical activity"],
+    "digital_mental_health": [
+        r"digital (mental health|intervention)", r"internet-based intervention",
+        r"telemedicine", r"telehealth", r"mhealth", r"\bapp-based\b",
+    ],
+}
 
 
 @dataclass
@@ -33,6 +60,10 @@ class ValidationReport:
     def fail(self, reason: str) -> None:
         self.passed = False
         self.lines.append(f"  FAIL: {reason}")
+
+    def flag(self, reason: str) -> None:
+        """Informational only — does not affect PASS/FAIL."""
+        self.lines.append(f"  FLAG: {reason}")
 
     def render(self) -> str:
         return "\n".join(self.lines)
@@ -71,6 +102,28 @@ def find_fuzzy_duplicates(papers: list[dict]) -> list[tuple[str, str, float]]:
     return matches
 
 
+def _paper_text(paper: dict) -> str:
+    return " ".join(
+        [
+            paper.get("title") or "",
+            paper.get("abstract") or "",
+            " ".join(paper.get("mesh_terms") or []),
+        ]
+    ).lower()
+
+
+def classify_topics(papers: list[dict]) -> dict[str, int]:
+    """Estimate topic coverage via keyword matching — see TOPIC_KEYWORDS docstring
+    note above. A paper may match zero, one, or several topics."""
+    counts = {topic: 0 for topic in TOPIC_KEYWORDS}
+    for paper in papers:
+        text = _paper_text(paper)
+        for topic, patterns in TOPIC_KEYWORDS.items():
+            if any(re.search(pattern, text) for pattern in patterns):
+                counts[topic] += 1
+    return counts
+
+
 def validate(papers: list[dict]) -> ValidationReport:
     r = ValidationReport()
     total = len(papers)
@@ -83,8 +136,13 @@ def validate(papers: list[dict]) -> ValidationReport:
     r.line()
 
     # --- per-source counts ---
-    r.line("-- Papers per source_database --")
-    source_counts = Counter(p.get("source_database", "MISSING") for p in papers)
+    r.line("-- Papers per source_database (counts every source a merged paper was found in) --")
+    source_counts: Counter = Counter()
+    for p in papers:
+        sources = p.get("all_source_databases") or (
+            [p["source_database"]] if p.get("source_database") else ["MISSING"]
+        )
+        source_counts.update(sources)
     for source, count in sorted(source_counts.items(), key=lambda kv: -kv[1]):
         r.line(f"  {source:<12} {count}")
     r.line()
@@ -130,8 +188,73 @@ def validate(papers: list[dict]) -> ValidationReport:
     r.line("-- Preprint vs peer-reviewed --")
     preprint_count = sum(1 for p in papers if p.get("is_preprint"))
     peer_reviewed_count = total - preprint_count
-    r.line(f"  preprint (not peer reviewed): {preprint_count}")
-    r.line(f"  peer-reviewed:                {peer_reviewed_count}")
+    preprint_pct = preprint_count / total if total else 0
+    r.line(f"  preprint (not peer reviewed): {preprint_count} ({preprint_pct:.0%})")
+    r.line(f"  peer-reviewed:                {peer_reviewed_count} ({1 - preprint_pct:.0%})")
+    r.line()
+
+    # --- evidence tier distribution ---
+    r.line(f"-- Evidence tier distribution (flag if any tier has < {TIER_FLAG_THRESHOLD}) --")
+    tier_counts = Counter(p.get("publication_tier") or "UNCLASSIFIED" for p in papers)
+    tiers_represented = [t for t in tier_counts if t != "UNCLASSIFIED"]
+    for tier, count in sorted(tier_counts.items(), key=lambda kv: -kv[1]):
+        r.line(f"  {tier:<20} {count}")
+        if tier != "UNCLASSIFIED" and count < TIER_FLAG_THRESHOLD:
+            r.flag(f"tier {tier} has only {count} papers (< {TIER_FLAG_THRESHOLD})")
+    r.line(f"  ({len(tiers_represented)} distinct tiers represented, "
+           f"excluding UNCLASSIFIED — UNCLASSIFIED papers predate publication_tier "
+           f"or came from a source that doesn't populate it, e.g. Day 1 PMC/PsyArXiv)")
+    r.line()
+
+    # --- topic distribution (estimated — see TOPIC_KEYWORDS module docstring) ---
+    r.line(f"-- Estimated topic coverage (keyword-based content classification, NOT "
+           f"ingestion provenance — flag if < {TOPIC_FLAG_THRESHOLD}) --")
+    topic_counts = classify_topics(papers)
+    for topic, count in sorted(topic_counts.items(), key=lambda kv: -kv[1]):
+        r.line(f"  {topic:<28} {count}")
+        if count < TOPIC_FLAG_THRESHOLD:
+            r.flag(f"topic {topic} has only {count} matching papers (< {TOPIC_FLAG_THRESHOLD})")
+    r.line()
+
+    # --- publication_type population rate ---
+    r.line("-- publication_type population --")
+    with_pub_type = [p for p in papers if p.get("publication_type")]
+    r.line(f"  overall: {len(with_pub_type)}/{total} ({len(with_pub_type) / total:.0%})" if total else "  n/a")
+    pubmed_papers = [
+        p for p in papers
+        if "pubmed" in (p.get("all_source_databases") or [p.get("source_database")])
+    ]
+    pubmed_with_type = [p for p in pubmed_papers if p.get("publication_type")]
+    if pubmed_papers:
+        r.line(f"  PubMed-sourced: {len(pubmed_with_type)}/{len(pubmed_papers)} "
+               f"({len(pubmed_with_type) / len(pubmed_papers):.0%})")
+        if len(pubmed_with_type) / len(pubmed_papers) < 0.95:
+            r.flag("PubMed-sourced papers should be near 100% populated for publication_type")
+    r.line()
+
+    # --- retraction status ---
+    r.line("-- Retraction status (OpenAlex) --")
+    checked = [p for p in papers if p.get("openalex_checked")]
+    retracted = [p for p in papers if p.get("is_retracted")]
+    r.line(f"  checked against OpenAlex: {len(checked)}/{total}")
+    r.line(f"  retracted:                {len(retracted)}")
+    for p in retracted:
+        r.line(f"    ** {p.get('paper_id', '?')}: {p.get('title', '')[:70]}")
+    r.line()
+
+    # --- contested-topic coverage ---
+    r.line("-- Contested-topic coverage --")
+    contested_counts = Counter(p.get("contested_topic") for p in papers if p.get("contested_topic"))
+    if contested_counts:
+        for slug, count in sorted(contested_counts.items()):
+            r.line(f"  {slug:<40} {count} papers")
+            if count < 2:
+                r.flag(f"{slug} has only {count} paper(s) — can't represent both sides of a debate with fewer than 2")
+        r.line("  (paper count only — whether both sides are ACTUALLY represented "
+               "requires reading abstracts or the stance classifier; not re-verified "
+               "automatically here to avoid asserting an unread paper's stance)")
+    else:
+        r.line("  none found")
     r.line()
 
     # --- suspected duplicates ---
@@ -163,6 +286,20 @@ def validate(papers: list[dict]) -> ValidationReport:
         r.fail(f"{len(missing_url)} papers have no source_url")
     else:
         r.line("  OK: all papers have a source_url")
+
+    if len(tiers_represented) < MIN_TIERS_REPRESENTED:
+        r.fail(f"only {len(tiers_represented)} evidence tiers represented, "
+               f"need >= {MIN_TIERS_REPRESENTED}")
+    else:
+        r.line(f"  OK: {len(tiers_represented)} evidence tiers represented "
+               f"(>= {MIN_TIERS_REPRESENTED})")
+
+    thin_topics = {t: c for t, c in topic_counts.items() if c < TOPIC_FAIL_THRESHOLD}
+    if thin_topics:
+        r.fail(f"topics below {TOPIC_FAIL_THRESHOLD} papers: "
+               f"{', '.join(f'{t}={c}' for t, c in thin_topics.items())}")
+    else:
+        r.line(f"  OK: no topic has fewer than {TOPIC_FAIL_THRESHOLD} papers")
 
     r.line()
     r.line(f"VERDICT: {'PASS' if r.passed else 'FAIL'}")

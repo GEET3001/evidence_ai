@@ -63,6 +63,8 @@ TOPICS = [
     '"Social Media"[MeSH] AND "Mental Health"[MeSH]',
     '"Cognitive Behavioral Therapy"[MeSH]',
     '"Exercise"[MeSH] AND "Mental Health"[MeSH]',
+    '("Internet-Based Intervention"[MeSH] OR "Digital Health"[MeSH] OR "Telemedicine"[MeSH]) '
+    'AND "Mental Health"[MeSH]',
 ]
 
 DEFAULT_TARGET = 90
@@ -316,18 +318,20 @@ def _tier_bucket(tier: PublicationTier) -> str:
     return "observational"
 
 
-def run(target: int, per_query_limit: int) -> list[Paper]:
+def run(target: int, per_query_limit: int, topics: list[str] | None = None) -> list[Paper]:
     client = PubMedClient()
     tiers = _build_tiers(target)
     tiers_by_name = {t.name: t for t in tiers}
+    topics = topics if topics is not None else TOPICS
 
-    seen_dois: set[str] = set()
-    seen_titles: set[str] = set()
+    existing = _load_existing_output()
+    seen_dois = {p["doi"].strip().lower() for p in existing if p.get("doi")}
+    seen_titles = {_normalize_title(p.get("title", "")) for p in existing}
     papers: list[Paper] = []
 
     for tier in tiers:
         print(f"\n=== tier: {tier.name} (target {tier.share}) ===")
-        for topic in TOPICS:
+        for topic in topics:
             if tier.filled >= tier.share:
                 break
             for pt_filter in tier.pt_filters:
@@ -361,8 +365,9 @@ def run(target: int, per_query_limit: int) -> list[Paper]:
                 )
                 _print_progress(tiers)
 
-    _write_output(papers)
+    _write_output(existing + [p.model_dump(mode="json") for p in papers])
     _print_progress(tiers, final=True)
+    print(f"\nAdded {len(papers)} new papers this run (existing entries were preserved, not overwritten).")
     return papers
 
 
@@ -371,12 +376,20 @@ def _print_progress(tiers: list[QueryTier], final: bool = False) -> None:
     print(prefix, "  ".join(f"{t.name}={t.filled}/{t.share}" for t in tiers))
 
 
-def _write_output(papers: list[Paper]) -> None:
+def _load_existing_output() -> list[dict]:
+    out_path = settings.data_dir / "pubmed_papers.json"
+    if not out_path.exists():
+        return []
+    with open(out_path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _write_output(papers: list[dict]) -> None:
     out_path = settings.data_dir / "pubmed_papers.json"
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump([p.model_dump(mode="json") for p in papers], f, indent=2, ensure_ascii=False)
-    print(f"\nWrote {len(papers)} papers to {out_path}")
+        json.dump(papers, f, indent=2, ensure_ascii=False)
+    print(f"\nWrote {len(papers)} total papers to {out_path}")
     print("(data/corpus.json was not touched — merge pubmed_papers.json into it separately.)")
 
 
@@ -396,14 +409,30 @@ def main() -> None:
         action="store_true",
         help="Fetch only 2 results per query, to exercise every tier x topic combo cheaply.",
     )
+    parser.add_argument(
+        "--per-query-limit",
+        type=int,
+        default=None,
+        help="Override results fetched per query (default 10, or 2 with --dry-run).",
+    )
+    parser.add_argument(
+        "--topic-index",
+        type=int,
+        default=None,
+        help="Run only TOPICS[N] (0-indexed) instead of all topics — for cheaply "
+        "backfilling a single topic without re-querying the rest.",
+    )
     args = parser.parse_args()
 
     per_query_limit = DRY_RUN_PER_QUERY_LIMIT if args.dry_run else DEFAULT_PER_QUERY_LIMIT
+    if args.per_query_limit is not None:
+        per_query_limit = args.per_query_limit
     target = args.target
+    topics = [TOPICS[args.topic_index]] if args.topic_index is not None else None
     if args.dry_run:
         print(f"[dry-run] limit={DRY_RUN_PER_QUERY_LIMIT} per query, target={target}")
 
-    run(target, per_query_limit)
+    run(target, per_query_limit, topics=topics)
 
 
 if __name__ == "__main__":

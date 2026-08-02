@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     NCBI_EMAIL: str = "geetnatu73@gmail.com"
     NCBI_API_KEY: str | None = None
 
+    # --- OpenAlex (see app/ingestion/openalex_enrich.py) ---
+    # mailto puts requests in OpenAlex's "polite pool" for faster, more reliable responses.
+    OPENALEX_MAILTO: str = "geetnatu73@gmail.com"
+
     # --- Models ---
     EMBEDDING_MODEL: str = "pritamdeka/S-PubMedBert-MS-MARCO"
     NLI_BASELINE_MODEL: str = "facebook/bart-large-mnli"

@@ -40,6 +40,8 @@ export interface Paper {
   abstract: string;
   source_url: string;
   source_database: SourceDatabase;
+  /** Every source_database this paper was independently found in (post-merge). */
+  all_source_databases: SourceDatabase[];
   /** e.g. "RCT", "meta-analysis", "observational" */
   publication_type: string | null;
   /** Normalised study-design tier, derived from PubMed's PublicationTypeList/MeSH headings where available. */
@@ -48,11 +50,29 @@ export interface Paper {
   mesh_terms: string[];
   journal: string | null;
   pmid: string | null;
+  /** Slug identifying a genuinely-contested claim this paper was retrieved for. null for ordinary corpus papers. */
+  contested_topic: string | null;
   /** True if not peer reviewed (e.g. psyarxiv, medrxiv postings). */
   is_preprint: boolean;
   doi: string | null;
   /** ISO 8601 timestamp. */
   retrieved_at: string;
+
+  /** Whether this paper has actually been looked up in OpenAlex — false means "not checked", not "checked and clean". */
+  openalex_checked: boolean;
+  /** OpenAlex retraction flag. Always a definite boolean; check openalex_checked before trusting a false here. */
+  is_retracted: boolean;
+  cited_by_count: number | null;
+  is_open_access: boolean | null;
+  open_access_url: string | null;
+  concepts: OpenAlexConcept[];
+  referenced_works_count: number | null;
+  author_institutions: string[];
+}
+
+export interface OpenAlexConcept {
+  display_name: string;
+  score: number;
 }
 
 export interface Passage {
