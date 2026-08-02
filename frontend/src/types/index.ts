@@ -22,6 +22,16 @@ export type Verdict =
 
 export type GradeCertainty = "HIGH" | "MODERATE" | "LOW" | "VERY_LOW";
 
+export type PublicationTier =
+  | "META_ANALYSIS"
+  | "SYSTEMATIC_REVIEW"
+  | "RCT"
+  | "COHORT"
+  | "CASE_CONTROL"
+  | "CROSS_SECTIONAL"
+  | "CASE_REPORT"
+  | "OTHER";
+
 export interface Paper {
   paper_id: string;
   title: string;
@@ -32,6 +42,12 @@ export interface Paper {
   source_database: SourceDatabase;
   /** e.g. "RCT", "meta-analysis", "observational" */
   publication_type: string | null;
+  /** Normalised study-design tier, derived from PubMed's PublicationTypeList/MeSH headings where available. */
+  publication_tier: PublicationTier | null;
+  /** MeSH descriptor terms, for retrieval filtering. */
+  mesh_terms: string[];
+  journal: string | null;
+  pmid: string | null;
   /** True if not peer reviewed (e.g. psyarxiv, medrxiv postings). */
   is_preprint: boolean;
   doi: string | null;

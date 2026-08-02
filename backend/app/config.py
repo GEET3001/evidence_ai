@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     corpus_path: Path = DATA_DIR / "corpus.json"
     index_dir: Path = DATA_DIR / "index"
 
+    # --- NCBI E-utilities identification (see .env.example for how to get a free API key) ---
+    NCBI_TOOL: str = "EvidenceAI"
+    NCBI_EMAIL: str = "geetnatu73@gmail.com"
+    NCBI_API_KEY: str | None = None
+
     # --- Models ---
     EMBEDDING_MODEL: str = "pritamdeka/S-PubMedBert-MS-MARCO"
     NLI_BASELINE_MODEL: str = "facebook/bart-large-mnli"

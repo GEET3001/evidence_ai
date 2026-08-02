@@ -47,6 +47,24 @@ class GradeCertainty(str, Enum):
     VERY_LOW = "VERY_LOW"
 
 
+class PublicationTier(str, Enum):
+    """Normalised study-design tier, used to weight evidence in later phases.
+
+    Ordered roughly by evidence strength (meta-analysis > RCT > observational
+    subtypes), so a corpus skewed to one tier makes that weighting meaningless
+    — see backend/app/ingestion/pubmed_client.py for stratified collection.
+    """
+
+    META_ANALYSIS = "META_ANALYSIS"
+    SYSTEMATIC_REVIEW = "SYSTEMATIC_REVIEW"
+    RCT = "RCT"
+    COHORT = "COHORT"
+    CASE_CONTROL = "CASE_CONTROL"
+    CROSS_SECTIONAL = "CROSS_SECTIONAL"
+    CASE_REPORT = "CASE_REPORT"
+    OTHER = "OTHER"
+
+
 class Paper(BaseModel):
     """A source research paper in the corpus."""
 
@@ -60,6 +78,16 @@ class Paper(BaseModel):
     publication_type: str | None = Field(
         default=None, description='e.g. "RCT", "meta-analysis", "observational"'
     )
+    publication_tier: PublicationTier | None = Field(
+        default=None,
+        description="Normalised study-design tier, derived from PubMed's "
+        "PublicationTypeList/MeSH headings where available.",
+    )
+    mesh_terms: list[str] = Field(
+        default_factory=list, description="MeSH descriptor terms, for retrieval filtering."
+    )
+    journal: str | None = None
+    pmid: str | None = None
     is_preprint: bool = Field(
         description="True if not peer reviewed (e.g. psyarxiv, medrxiv postings)."
     )
