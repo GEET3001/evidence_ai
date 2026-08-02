@@ -1,12 +1,15 @@
 """FastAPI entrypoint for EvidenceAI.
 
-Endpoints currently return hardcoded sample data matching the response
-schemas in app.models, so the frontend can be built against a stable
-contract before the retrieval/classification pipeline exists.
+POST /verify runs the real retrieval + stance classification pipeline
+(app.pipeline.service), loaded once at startup. GET /verify/{id} and
+GET /verify/{id}/report still return hardcoded sample data — there is no
+persistence layer for verdicts yet, so a verdict can't actually be looked
+back up by id; adding that is out of scope for now.
 """
 
+import sys
 import tempfile
-import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -27,11 +30,26 @@ from app.models import (
     Verdict,
     VerdictResponse,
 )
+from app.pipeline.service import get_service, init_service
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Loading retrieval index and stance classifier...", file=sys.stderr)
+    try:
+        init_service()
+    except FileNotFoundError as exc:
+        print(f"\nSTARTUP FAILED: {exc}\n", file=sys.stderr)
+        raise
+    print("Pipeline ready.", file=sys.stderr)
+    yield
+
 
 app = FastAPI(
     title="EvidenceAI",
     description="Explainable research claim verification for mental health literature.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -192,13 +210,8 @@ def health() -> dict[str, str]:
 
 @app.post("/verify", response_model=VerdictResponse)
 def verify_claim(request: ClaimRequest) -> VerdictResponse:
-    """Retrieve evidence for a claim, classify it, and return a verdict.
-
-    Stub: returns hardcoded sample data until the retrieval and
-    classification pipeline is wired up.
-    """
-    verification_id = str(uuid.uuid4())
-    return _sample_verdict(verification_id, request.claim)
+    """Retrieve evidence for a claim, classify it, and return a verdict."""
+    return get_service().verify(request.claim)
 
 
 @app.get("/verify/{verification_id}", response_model=VerdictResponse)
