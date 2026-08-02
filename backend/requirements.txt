@@ -13,15 +13,20 @@ playwright==1.45.0
 tenacity==8.5.0
 
 # --- Retrieval ---
-sentence-transformers==3.0.1
-faiss-cpu==1.8.0
+# Install torch first from the CPU wheel index (see README) — otherwise a plain
+# `pip install -r requirements.txt` pulls the default CUDA-bundled torch wheel.
+# Versions below are >= floors, not exact pins: this venv is Python 3.13, and the
+# originally-pinned exact versions (torch==2.3.1, faiss-cpu==1.8.0, etc.) predate
+# cp313 wheels entirely and fail to install here.
+sentence-transformers>=3.0.1
+faiss-cpu>=1.9.0.post1
 rank_bm25==0.2.2
 
 # --- Classification / ML ---
-transformers==4.42.4
-torch==2.3.1
+transformers>=4.45.0
+torch>=2.6.0
 datasets==2.20.0
-scikit-learn==1.5.1
+scikit-learn>=1.6.0
 shap==0.46.0
 
 # --- Reporting ---
