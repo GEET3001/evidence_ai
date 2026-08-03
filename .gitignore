@@ -32,6 +32,12 @@ data/index/
 data/scifact/
 
 # --- Model checkpoints ---
+# backend/models/ is where STANCE_MODEL_PATH resolves at runtime (relative to
+# backend/, the app's cwd) — the whole directory is ignored, not just the
+# weight files, since a HF model dir also has config/tokenizer files that
+# aren't covered by *.bin/*.safetensors alone. See README: Model Provenance
+# for how to obtain or retrain the checkpoint that goes here.
+backend/models/
 *.bin
 *.safetensors
 notebooks/checkpoints/

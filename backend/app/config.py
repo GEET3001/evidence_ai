@@ -5,6 +5,7 @@ verdict thresholds) must be defined here, not inlined at call sites.
 """
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -41,6 +42,13 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "pritamdeka/S-PubMedBert-MS-MARCO"
     NLI_BASELINE_MODEL: str = "facebook/bart-large-mnli"
     STANCE_MODEL_PATH: str = "models/stance-deberta"  # fine-tuned checkpoint, produced in Colab
+    # Explicit switch, not auto-detection off whether STANCE_MODEL_PATH happens to
+    # exist — "finetuned" fails loudly at startup if the checkpoint isn't there,
+    # rather than silently falling back to zero-shot when you specifically asked
+    # for the fine-tuned model (e.g. for a demo where the difference matters).
+    # Defaults to "zeroshot" so the app still starts for anyone who hasn't
+    # obtained/trained a checkpoint yet (see README: Model Provenance).
+    STANCE_MODEL_MODE: Literal["zeroshot", "finetuned"] = "zeroshot"
 
     # --- Chunking ---
     CHUNK_SIZE_TOKENS: int = 256
