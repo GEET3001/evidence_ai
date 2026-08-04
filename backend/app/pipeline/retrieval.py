@@ -12,11 +12,14 @@ threshold downstream in pipeline.verdict.
 
 from __future__ import annotations
 
+import app._thread_limits  # noqa: F401  (must precede the faiss/torch imports below)
+
 import json
 import re
 
 import faiss
 import numpy as np
+import torch
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
@@ -49,7 +52,8 @@ class RetrievalIndex:
                 "`python -m app.indexing.build_index` first."
             )
 
-        self.embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL, device=device)
         self.faiss_index = faiss.read_index(str(faiss_path))
 
         with open(passages_path, encoding="utf-8") as f:

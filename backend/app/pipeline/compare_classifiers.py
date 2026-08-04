@@ -33,6 +33,8 @@ Usage:
 
 from __future__ import annotations
 
+import app._thread_limits  # noqa: F401  (must precede the sklearn/torch imports below)
+
 import argparse
 import json
 import random

@@ -9,6 +9,8 @@ Usage:
 
 from __future__ import annotations
 
+import app._thread_limits  # noqa: F401  (must precede the faiss/torch imports below)
+
 import json
 import sys
 

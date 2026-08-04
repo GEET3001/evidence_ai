@@ -7,17 +7,20 @@ persistence layer for verdicts yet, so a verdict can't actually be looked
 back up by id; adding that is out of scope for now.
 """
 
+import os
 import sys
 import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
+import psutil
 from docx import Document
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from app.config import settings
 from app.models import (
     ClaimRequest,
     EvidenceItem,
@@ -30,7 +33,9 @@ from app.models import (
     Verdict,
     VerdictResponse,
 )
-from app.pipeline.service import get_service, init_service
+from app.pipeline.service import PipelineService, get_service, init_service
+
+_process = psutil.Process(os.getpid())
 
 
 @asynccontextmanager
@@ -203,9 +208,32 @@ def _sample_verdict(verification_id: str, claim: str) -> VerdictResponse:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    """Liveness check."""
-    return {"status": "ok"}
+def health() -> dict:
+    """Liveness check plus real process/model state — check this before
+    recording a demo (see README: Demo Mode) rather than assuming the
+    service loaded cleanly just because uvicorn didn't print an error."""
+    rss_mb = round(_process.memory_info().rss / (1024 * 1024), 1)
+
+    try:
+        service: PipelineService = get_service()
+        models = {
+            "embedding_model": settings.EMBEDDING_MODEL,
+            "stance_model_mode": settings.STANCE_MODEL_MODE,
+            "stance_model_source": service.stance_classifier.source,
+            "stance_model_device": service.stance_classifier.device,
+            "passages_indexed": len(service.retrieval.passages),
+        }
+        pipeline_loaded = True
+    except RuntimeError:
+        models = None
+        pipeline_loaded = False
+
+    return {
+        "status": "ok" if pipeline_loaded else "degraded",
+        "pipeline_loaded": pipeline_loaded,
+        "rss_mb": rss_mb,
+        "models": models,
+    }
 
 
 @app.post("/verify", response_model=VerdictResponse)
