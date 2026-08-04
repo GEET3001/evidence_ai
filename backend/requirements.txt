@@ -8,16 +8,13 @@ python-dotenv==1.0.1
 # --- HTTP / scraping ---
 requests==2.32.3
 beautifulsoup4==4.12.3
-lxml==5.2.2
-playwright==1.45.0
+lxml==5.2.2  # backs BeautifulSoup's "xml" parser, used by the eutils scrapers
 tenacity==8.5.0
 
 # --- Retrieval ---
-# Install torch first from the CPU wheel index (see README) — otherwise a plain
-# `pip install -r requirements.txt` pulls the default CUDA-bundled torch wheel.
-# Versions below are >= floors, not exact pins: this venv is Python 3.13, and the
-# originally-pinned exact versions (torch==2.3.1, faiss-cpu==1.8.0, etc.) predate
-# cp313 wheels entirely and fail to install here.
+# Install torch first from the CPU wheel index (see README), or pip pulls the
+# CUDA-bundled wheel. Floors rather than pins because this venv is Python 3.13
+# and the original exact pins predate cp313 wheels.
 sentence-transformers>=3.0.1
 faiss-cpu>=1.9.0.post1
 rank_bm25==0.2.2
@@ -25,13 +22,9 @@ rank_bm25==0.2.2
 # --- Classification / ML ---
 transformers>=4.45.0
 torch>=2.6.0
+accelerate>=0.33.0  # required by from_pretrained(low_cpu_mem_usage=True)
 datasets==2.20.0
 scikit-learn>=1.6.0
-shap==0.46.0
-accelerate>=0.33.0
-
-# --- Reporting ---
-python-docx==1.1.2
 
 # --- Ops ---
 psutil>=6.0.0

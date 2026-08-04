@@ -1,11 +1,7 @@
-"""PubMed Central (PMC) scraper via NCBI E-utilities.
+"""PubMed Central scraper via NCBI E-utilities.
 
-PMC's search/article HTML is not scraped directly: NCBI publishes a free,
-documented API (E-utilities) that is the sanctioned way to access PMC
-records programmatically and is far more stable than parsing HTML whose
-layout changes. Requests are self-identified with `tool`/`email` params
-per NCBI's E-utilities usage policy. Raw XML is still saved to
-data/raw/pmc/ before parsing, per the project's raw-first policy.
+Uses the documented E-utilities API rather than parsing PMC's HTML, and saves
+the raw XML to data/raw/pmc/ before parsing it.
 """
 
 from __future__ import annotations

@@ -1,7 +1,6 @@
 """Application settings: paths, model names, and tunable constants.
 
-All magic numbers used elsewhere in the pipeline (chunking, retrieval,
-verdict thresholds) must be defined here, not inlined at call sites.
+Pipeline constants belong here rather than inline at their call sites.
 """
 
 from pathlib import Path
@@ -15,11 +14,7 @@ DATA_DIR = BASE_DIR / "data"
 
 
 class Settings(BaseSettings):
-    """Central configuration for EvidenceAI.
-
-    Values can be overridden via environment variables or a `.env` file
-    (see `.env.example`).
-    """
+    """Central configuration, overridable via environment variables or `.env`."""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -42,12 +37,8 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "pritamdeka/S-PubMedBert-MS-MARCO"
     NLI_BASELINE_MODEL: str = "facebook/bart-large-mnli"
     STANCE_MODEL_PATH: str = "models/stance-deberta"  # fine-tuned checkpoint, produced in Colab
-    # Explicit switch, not auto-detection off whether STANCE_MODEL_PATH happens to
-    # exist — "finetuned" fails loudly at startup if the checkpoint isn't there,
-    # rather than silently falling back to zero-shot when you specifically asked
-    # for the fine-tuned model (e.g. for a demo where the difference matters).
-    # Defaults to "zeroshot" so the app still starts for anyone who hasn't
-    # obtained/trained a checkpoint yet (see README: Model Provenance).
+    # Explicit rather than inferred from whether the path exists, so asking for
+    # the fine-tuned model can never silently fall back to zero-shot.
     STANCE_MODEL_MODE: Literal["zeroshot", "finetuned"] = "zeroshot"
 
     # --- Chunking ---

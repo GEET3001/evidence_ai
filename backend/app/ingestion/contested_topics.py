@@ -1,16 +1,10 @@
-"""Targeted retrieval for claims where the mental health literature genuinely
-disagrees, so the corpus has real material for the CONFLICTING verdict and
-for eval claims across the full verdict spectrum.
+"""Targeted retrieval for claims where the literature genuinely disagrees, so
+the corpus holds real material for the CONFLICTING verdict.
 
-For each contested claim below, two PubMed queries are run against the same
-population/intervention: one with terms oriented toward a positive/significant
-effect, one oriented toward null/negative findings ("no significant", "failed
-to replicate", etc). This is a RETRIEVAL strategy, not a stance label — which
-way a given abstract actually leans is for the human/model reading it to
-decide (the app's own stance classifier is the real answer to that question
-later in the pipeline). Papers are tagged with `contested_topic` so they're
-easy to find when building eval claims; they are NOT tagged with an assumed
-side, precisely to avoid asserting what a paper says without reading it.
+Each claim below is queried twice against the same population and intervention:
+once with terms oriented toward a positive effect, once toward null findings.
+That is a retrieval strategy rather than a label, so papers are tagged with
+`contested_topic` but never with an assumed side.
 
 Usage:
     python -m app.ingestion.contested_topics

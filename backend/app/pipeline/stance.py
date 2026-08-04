@@ -1,35 +1,7 @@
-"""Stance classification of a passage against a claim — zero-shot NLI or a
-fine-tuned checkpoint, switched via STANCE_MODEL_MODE (see config.py).
+"""Stance classification of a passage against a claim.
 
-Passage text = premise, claim = hypothesis. STANCE_MODEL_MODE="zeroshot"
-(default) uses NLI_BASELINE_MODEL (facebook/bart-large-mnli) from the HF hub.
-STANCE_MODEL_MODE="finetuned" uses the checkpoint at STANCE_MODEL_PATH and
-fails loudly at startup if it isn't there — this is an explicit switch, not
-auto-detection off whether that path happens to exist, so "I asked for the
-fine-tuned model" never silently becomes "I got zero-shot instead" (see
-README: Model Provenance for how to obtain/train a checkpoint).
-
-Labels are mapped by the model's own id2label NAMES, not hardcoded index
-order, since a fine-tuned checkpoint isn't guaranteed to preserve
-bart-large-mnli's label order or even its entailment/neutral/contradiction
-vocabulary — notebooks/train_stance.ipynb sets id2label to
-SUPPORT/CONTRADICT/NEUTRAL directly (matching this module's own vocabulary),
-so this mapping already handles the fine-tuned model correctly with no
-changes needed; confirmed by inspection, not just assumed.
-
-rationale_sentences ("the sentence(s) the classifier keyed on" per
-EvidenceItem's docstring) come from re-running _score() per sentence within
-the passage and picking whichever sentence scores highest for the passage's
-winning label — this is what actually drove the stance call, not just a
-topically-similar sentence (which is what an embedding-similarity approach
-would give you). This mechanism is model-agnostic (it just calls _score()
-again, whichever model that currently is) — it is NOT tied to zero-shot NLI's
-behaviour, and needs no adaptation for a fine-tuned checkpoint. It's also
-in-distribution for the fine-tuned model specifically: many of its SUPPORT/
-CONTRADICT training pairs (see prepare_scifact.py) were already single
-annotated sentences, not full passages, so isolated-sentence scoring isn't a
-novel input shape for it. Faithful per README: no LLM writes this text, it's
-a direct readout of a computed classifier score.
+The passage is the premise and the claim is the hypothesis. Runs either
+zero-shot NLI or a fine-tuned checkpoint, selected by STANCE_MODEL_MODE.
 """
 
 from __future__ import annotations
@@ -46,9 +18,8 @@ from app.config import settings
 from app.indexing.text_utils import split_sentences
 from app.models import Stance
 
-# A future fine-tuned checkpoint may use our own SUPPORT/CONTRADICT/NEUTRAL
-# vocabulary directly instead of NLI's entailment/neutral/contradiction —
-# both are accepted so the swap-in genuinely requires no code changes.
+# Matched by name rather than index, so a fine-tuned checkpoint can use either
+# NLI's vocabulary or ours without having to preserve bart-large-mnli's ordering.
 _LABEL_ALIASES: dict[str, Stance] = {
     "entailment": Stance.SUPPORT,
     "contradiction": Stance.CONTRADICT,
@@ -67,13 +38,11 @@ class StanceResult:
 
 class StanceClassifier:
     def __init__(self, model_path: str | None = None) -> None:
-        """model_path overrides STANCE_MODEL_MODE-based resolution entirely —
-        used by pipeline.compare_classifiers to load two specific models side
-        by side regardless of the configured mode. Omit it for normal
-        (production) resolution, which is explicit-mode-based, not
-        existence-based: STANCE_MODEL_MODE="finetuned" always means "use
-        STANCE_MODEL_PATH, and fail loudly if it's not there" — never a
-        silent fallback to zero-shot."""
+        """Load the stance model.
+
+        `model_path` bypasses STANCE_MODEL_MODE, so compare_classifiers can hold
+        both models open at once regardless of the configured mode.
+        """
         if model_path is not None:
             source = model_path
         elif settings.STANCE_MODEL_MODE == "finetuned":
@@ -91,20 +60,10 @@ class StanceClassifier:
             source = settings.NLI_BASELINE_MODEL
 
         self.source = source
-        # Zero-shot NLI on CPU is compute-bound (~3s/forward pass for
-        # bart-large-mnli single-threaded — see app/_thread_limits.py for why
-        # it must stay single-threaded on this machine). GPU is used
-        # opportunistically when available and falls back to the
-        # already-proven CPU path otherwise, so this still runs correctly on
-        # a grading machine with no CUDA device.
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tokenizer = AutoTokenizer.from_pretrained(source)
-        # low_cpu_mem_usage avoids briefly double-allocating the full weight
-        # tensors during load. dtype=torch.float32 (explicit, not "auto") skips
-        # transformers' dtype auto-detection probe, which otherwise mmaps the
-        # checkpoint via safe_open() regardless of low_cpu_mem_usage — on a
-        # memory-constrained machine that probe alone can hit the OS commit
-        # limit before the model is even usable.
+        # An explicit dtype skips transformers' auto-detection probe, which mmaps
+        # the checkpoint and can exhaust the commit limit on a 16GB machine.
         self.model = AutoModelForSequenceClassification.from_pretrained(
             source, low_cpu_mem_usage=True, dtype=torch.float32
         )
@@ -140,6 +99,12 @@ class StanceClassifier:
         return scores
 
     def classify(self, passage_text: str, claim: str) -> StanceResult:
+        """Classify the passage and report the sentence that drove the call.
+
+        The rationale sentence is picked by re-scoring each sentence alone and
+        keeping the one scoring highest for the winning stance, so it reads out
+        the classifier itself rather than a separate similarity heuristic.
+        """
         scores = self._score(passage_text, claim)
         winning_stance = max(scores, key=scores.get)
         confidence = scores[winning_stance]

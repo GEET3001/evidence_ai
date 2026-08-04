@@ -1,22 +1,15 @@
-"""PubMed (not PMC) client via NCBI E-utilities, with evidence-tier stratification.
+"""PubMed client via NCBI E-utilities, with evidence-tier stratification.
 
-Distinct from pmc_scraper.py: PMC only indexes the open-access full-text
-subset, while PubMed covers essentially all indexed biomedical literature
-(abstract + metadata only) and is where MeSH headings and PublicationType
-live. This module targets db="pubmed" for that richer, broader metadata.
+Distinct from pmc_scraper.py: PMC indexes only the open-access full-text
+subset, while PubMed covers the full indexed literature and is where MeSH
+headings and PublicationType live.
 
-Later phases weight evidence by study design (meta-analysis > RCT > cohort >
-cross-sectional) and map confidence onto GRADE. A corpus skewed to one tier
-makes that weighting meaningless, so this client deliberately queries across
-MeSH topics x publication-type tiers rather than taking whatever a single
-broad search returns, and reports per-tier fill progress as it runs.
+Because later stages weight evidence by study design, this client queries
+across MeSH topics by publication-type tier rather than taking whatever a
+single broad search returns, and reports per-tier fill progress as it runs.
 
-Same access policy as pmc_scraper.py: eutils is a documented API, not a
-crawlable web site, so robots.txt is not enforced (see base.BaseScraper's
-module docstring). Requests self-identify via tool/email per NCBI's usage
-policy. Rate limit is 3 req/sec by default, 10 req/sec with a free NCBI API
-key (see .env.example for how to get one) — this client detects the key and
-adjusts automatically.
+The rate limit is 3 req/sec, or 10 with a free NCBI API key (see .env.example),
+which this client detects and adjusts to automatically.
 
 Usage:
     python -m app.ingestion.pubmed_client

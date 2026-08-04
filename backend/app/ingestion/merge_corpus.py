@@ -1,23 +1,16 @@
 """Merge all collection sources into the final data/corpus.json.
 
 Combines:
-  - data/corpus.json          (Day 1 scraped corpus: PMC + PsyArXiv)
-  - data/pubmed_papers.json   (Day 2 stratified PubMed collection + contested-topic retrieval)
-  - data/manual_papers.json   (optional; any hand-added papers, if that file exists)
+  - data/corpus.json          (PMC + PsyArXiv)
+  - data/pubmed_papers.json   (stratified PubMed + contested-topic retrieval)
+  - data/manual_papers.json   (optional, if present)
 
-Deduplication is transitive (union-find), in this priority order:
-  1. exact DOI match
-  2. exact PMID match
-  3. fuzzy title match >= FUZZY_TITLE_MATCH_THRESHOLD
+Deduplication is transitive (union-find) on exact DOI, then exact PMID, then
+fuzzy title match >= FUZZY_TITLE_MATCH_THRESHOLD.
 
-Duplicates are MERGED, not dropped: the record with the highest metadata
-completeness score becomes the base, gaps are backfilled from the other
-copies, mesh_terms/all_source_databases are unioned, and is_preprint is
-False if ANY copy is peer-reviewed (finding a paper in a peer-reviewed
-index anywhere confirms peer review, regardless of also appearing as a
-preprint elsewhere). This preserves "which collection method found what"
-for the methodology section, rather than silently picking one and losing
-the rest.
+Duplicates are merged rather than dropped: the most complete record becomes the
+base, gaps are backfilled from the others, mesh_terms and all_source_databases
+are unioned, and is_preprint is False if any copy is peer reviewed.
 
 Usage:
     python -m app.ingestion.merge_corpus

@@ -1,16 +1,11 @@
-"""Split a Paper's abstract into overlapping Passage chunks for indexing.
+"""Split a paper's abstract into overlapping passage chunks for indexing.
 
-We only ever store title+abstract text (no full paper body anywhere in the
-corpus), so passages are abstract-derived. Chunking packs sentences up to
-CHUNK_SIZE_TOKENS, carrying trailing sentences into the next chunk for
-CHUNK_OVERLAP_TOKENS of overlap — sentence-boundary packing rather than a
-naive token-window slice, so a passage never starts/ends mid-sentence (this
-matters downstream: pipeline.stance re-splits passages into sentences for
-rationale extraction, and a truncated sentence would corrupt that).
+Sentences are packed up to CHUNK_SIZE_TOKENS with CHUNK_OVERLAP_TOKENS of
+trailing overlap. Chunks always break on sentence boundaries, since stance
+rationale extraction re-splits passages into sentences downstream.
 
-Token counts come from the embedding model's own tokenizer (passed in by the
-caller, e.g. a loaded SentenceTransformer's `.tokenizer`) rather than a
-second tokenizer — one model, one notion of "token" throughout the pipeline.
+The caller passes in the embedding model's own tokenizer so token counts here
+match the model that will embed the result.
 """
 
 from __future__ import annotations
@@ -37,8 +32,6 @@ def _sentence_offsets(abstract: str, sentences: list[str]) -> list[tuple[int, in
     for sentence in sentences:
         idx = abstract.find(sentence, cursor)
         if idx == -1:
-            # Shouldn't happen (sentences come from splitting this exact string),
-            # but fall back to the cursor rather than crash on an edge case.
             idx = cursor
         offsets.append((idx, idx + len(sentence)))
         cursor = idx + len(sentence)
@@ -75,12 +68,9 @@ def chunk_paper(
             end += 1
         end -= 1
 
-        # A huge sentence right after the window (rare, but real — e.g. a
-        # structured abstract with a giant final sentence) can make the overlap
-        # rewind repeatedly re-pack the same short trailing sentences without
-        # ever reaching past `end`, producing a cascade of near-duplicate
-        # shrinking chunks. If this chunk made no progress past the previous
-        # one's end, skip straight past it instead of emitting a duplicate.
+        # An oversized sentence can make the overlap rewind re-pack the same
+        # trailing sentences forever. If this chunk ended where the last one
+        # did, skip past it rather than emit a near-duplicate.
         if end == prev_end:
             start = end + 1
             continue
@@ -109,11 +99,8 @@ def chunk_paper(
             Passage(
                 passage_id=f"{paper.paper_id}_p{i:03d}",
                 paper_id=paper.paper_id,
-                # The literal source slice, not a re-joined reconstruction — some
-                # abstracts (e.g. structured PsyArXiv ones) separate sections with
-                # a newline rather than a space, and char_start/char_end are
-                # documented as offsets into the source, so text must match
-                # abstract[char_start:char_end] exactly, whitespace included.
+                # Sliced from the source rather than rejoined, so the text
+                # matches abstract[char_start:char_end] exactly.
                 text=paper.abstract[char_start:char_end],
                 char_start=char_start,
                 char_end=char_end,

@@ -1,13 +1,8 @@
 """Shared scraping infrastructure: rate limiting, robots.txt checks, retries.
 
-robots.txt is enforced for sources fetched as web pages (medRxiv, Cochrane).
-It is deliberately NOT enforced for dedicated JSON/XML APIs (NCBI eutils,
-the OSF REST API) — those hosts blanket-disallow "/" for all user agents in
-robots.txt because the exclusion protocol targets crawlers indexing HTML,
-not documented API clients. Access to those APIs is governed by their own
-published usage policies (rate limits, required tool/email identification),
-which this module follows instead. Set `check_robots = False` on a subclass
-to opt out; the default is True (strict).
+robots.txt is enforced for sources fetched as web pages. Subclasses wrapping a
+documented JSON/XML API set `check_robots = False` and follow that API's own
+published usage policy instead.
 """
 
 from __future__ import annotations
@@ -41,11 +36,10 @@ class RobotsDisallowedError(RuntimeError):
 
 
 class BaseScraper(ABC):
-    """Abstract base for source-specific paper scrapers.
+    """Base for source-specific scrapers.
 
-    Subclasses implement `search()` and get a shared rate-limited,
-    retrying HTTP session plus helpers for robots.txt checks, persisting
-    raw responses, and cleaning HTML to text.
+    Subclasses implement `search()` and inherit a rate-limited, retrying HTTP
+    session plus helpers for robots.txt, raw persistence, and HTML cleanup.
     """
 
     source_name: str  # e.g. "pmc", "psyarxiv", "medrxiv", "cochrane"
@@ -72,9 +66,7 @@ class BaseScraper(ABC):
             try:
                 rp.read()
             except Exception:
-                # Unreachable robots.txt: treat as "no restrictions found"
-                # rather than failing closed, since RobotFileParser has no
-                # entries to enforce in that case anyway.
+                # Unreachable robots.txt parses as "no restrictions found".
                 pass
             self._robots_cache[host] = rp
         return self._robots_cache[host]

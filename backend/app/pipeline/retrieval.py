@@ -1,13 +1,7 @@
 """Hybrid BM25 + dense retrieval over the indexed passage corpus.
 
-Every passage is scored by both signals — not top-N-then-fuse. At this
-corpus's scale (a few hundred passages), scoring everything is cheap and
-avoids the classic hybrid-search bug where a passage strong on one signal
-but outside the other retriever's top-N gets unfairly zeroed out. Each score
-list is min-max normalized to [0,1] globally, then fused via
-BM25_WEIGHT/DENSE_WEIGHT (config.py) — this makes the fused relevance_score
-bounded in [0,1] by construction, so MIN_SIMILARITY is a well-defined
-threshold downstream in pipeline.verdict.
+Both signals score every passage, are normalized to [0,1], then fused by the
+weights in config.py. The fused score is what MIN_SIMILARITY thresholds against.
 """
 
 from __future__ import annotations
@@ -41,7 +35,7 @@ def _min_max_normalize(scores: np.ndarray) -> np.ndarray:
 
 
 class RetrievalIndex:
-    """Loads the prebuilt FAISS index + passages + corpus once; reused across requests."""
+    """Holds the prebuilt FAISS index, passages, and corpus for reuse across requests."""
 
     def __init__(self) -> None:
         faiss_path = settings.index_dir / "faiss.index"
@@ -88,8 +82,8 @@ class RetrievalIndex:
             [claim], normalize_embeddings=True, convert_to_numpy=True
         ).astype("float32")
 
-        # k=n over an exact IndexFlatIP returns every passage ranked, so this
-        # gives a real score for all of them, not just a top-N subset.
+        # k=n over an exact IndexFlatIP scores every passage, so a passage that
+        # ranks poorly on one signal can still be recovered by the other.
         distances, indices = self.faiss_index.search(claim_embedding, n)
         dense_scores = np.zeros(n, dtype="float32")
         for score, idx in zip(distances[0], indices[0]):

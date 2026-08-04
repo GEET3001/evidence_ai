@@ -1,7 +1,7 @@
-"""CLI to build the FAISS + passage index from data/corpus.json.
+"""Build the FAISS + passage index from data/corpus.json.
 
-Writes to data/index/ (gitignored) — must be re-run locally after cloning or
-whenever the corpus changes, before the API can serve real /verify results.
+Writes to data/index/, which is gitignored, so this must be run after cloning
+and whenever the corpus changes.
 
 Usage:
     python -m app.indexing.build_index
@@ -63,8 +63,7 @@ def build() -> None:
     settings.index_dir.mkdir(parents=True, exist_ok=True)
     faiss.write_index(index, str(settings.index_dir / "faiss.index"))
 
-    # Written in FAISS-insertion order — that ordering IS the contract with
-    # pipeline.retrieval (row i of the index <-> passages[i]).
+    # Insertion order is the contract with retrieval: index row i is passages[i].
     with open(settings.index_dir / "passages.json", "w", encoding="utf-8") as f:
         json.dump(
             [p.model_dump(mode="json") for p in passages], f, indent=2, ensure_ascii=False

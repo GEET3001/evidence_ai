@@ -1,12 +1,9 @@
 """Cochrane Library systematic review abstract scraper.
 
-Cochrane search is attempted as static HTML first; if it turns out to
-require JS rendering, the URL is logged to data/raw/needs_js.txt and
-skipped — same policy as medRxiv, no Selenium fallback yet. Every
-successfully parsed record is tagged publication_type="systematic_review",
-since that is what the Cochrane Database of Systematic Reviews publishes
-(the highest evidence tier), and is_preprint=False, since Cochrane reviews
-are peer reviewed.
+Search is attempted as static HTML; pages that turn out to need JS rendering
+are logged to data/raw/needs_js.txt and skipped. Parsed records are tagged
+publication_type="systematic_review" and is_preprint=False, since that is what
+the Cochrane Database of Systematic Reviews publishes.
 """
 
 from __future__ import annotations

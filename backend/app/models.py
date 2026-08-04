@@ -1,8 +1,4 @@
-"""Pydantic schemas shared across the API, pipeline, and frontend contract.
-
-These models are the interface both the backend pipeline and the frontend
-build against — field names and enum values here are load-bearing.
-"""
+"""Schemas shared by the API, the pipeline, and the frontend contract."""
 
 from datetime import datetime
 from enum import Enum
@@ -48,12 +44,7 @@ class GradeCertainty(str, Enum):
 
 
 class PublicationTier(str, Enum):
-    """Normalised study-design tier, used to weight evidence in later phases.
-
-    Ordered roughly by evidence strength (meta-analysis > RCT > observational
-    subtypes), so a corpus skewed to one tier makes that weighting meaningless
-    — see backend/app/ingestion/pubmed_client.py for stratified collection.
-    """
+    """Normalised study-design tier, ordered roughly by evidence strength."""
 
     META_ANALYSIS = "META_ANALYSIS"
     SYSTEMATIC_REVIEW = "SYSTEMATIC_REVIEW"
@@ -84,17 +75,14 @@ class Paper(BaseModel):
     source_database: SourceDatabase
     all_source_databases: list[SourceDatabase] = Field(
         default_factory=list,
-        description="Every source_database this paper was independently found in "
-        "(see app/ingestion/merge_corpus.py). Populated for all papers post-merge, "
-        "not just ones that were actually deduplicated across sources.",
+        description="Every source database this paper was independently found in.",
     )
     publication_type: str | None = Field(
         default=None, description='e.g. "RCT", "meta-analysis", "observational"'
     )
     publication_tier: PublicationTier | None = Field(
         default=None,
-        description="Normalised study-design tier, derived from PubMed's "
-        "PublicationTypeList/MeSH headings where available.",
+        description="Study-design tier, from PubMed publication types and MeSH headings.",
     )
     mesh_terms: list[str] = Field(
         default_factory=list, description="MeSH descriptor terms, for retrieval filtering."
@@ -103,9 +91,8 @@ class Paper(BaseModel):
     pmid: str | None = None
     contested_topic: str | None = Field(
         default=None,
-        description="Slug identifying a genuinely-contested claim this paper was "
-        "retrieved for (see app/ingestion/contested_topics.py), for building eval "
-        "claims that exercise the CONFLICTING verdict. None for ordinary corpus papers.",
+        description="Slug of the contested claim this paper was retrieved for, "
+        "or None for ordinary corpus papers.",
     )
     is_preprint: bool = Field(
         description="True if not peer reviewed (e.g. psyarxiv, medrxiv postings)."
@@ -116,15 +103,13 @@ class Paper(BaseModel):
     # --- OpenAlex enrichment (see app/ingestion/openalex_enrich.py) ---
     openalex_checked: bool = Field(
         default=False,
-        description="Whether this paper has actually been looked up in OpenAlex. "
-        "is_retracted/cited_by_count etc. are only verified signals when this is "
-        "True — False means 'not checked', not 'checked and clean'.",
+        description="Whether this paper was looked up in OpenAlex. The signals "
+        "below are only verified when this is True.",
     )
     is_retracted: bool = Field(
         default=False,
-        description="OpenAlex retraction flag. Always a definite bool (never null) "
-        "so it can't be silently misread as 'not retracted' — check "
-        "openalex_checked before trusting a False here.",
+        description="OpenAlex retraction flag. Never null, so check "
+        "openalex_checked before trusting a False.",
     )
     cited_by_count: int | None = None
     is_open_access: bool | None = None
@@ -148,8 +133,7 @@ class Passage(BaseModel):
 class PICOClaim(BaseModel):
     """A claim decomposed into Population / Intervention / Comparison / Outcome.
 
-    Fields other than raw_claim are optional because PICO extraction from a
-    free-text claim does not always identify all four elements.
+    Only raw_claim is required; extraction may not identify all four elements.
     """
 
     raw_claim: str
@@ -172,8 +156,8 @@ class EvidenceItem(BaseModel):
     )
     population_match: bool | None = Field(
         default=None,
-        description="Whether this passage's population matches the claim's PICO "
-        "population. None if indeterminate (flags PICO indirectness).",
+        description="Whether this passage's population matches the claim's. "
+        "None if indeterminate.",
     )
 
 

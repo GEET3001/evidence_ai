@@ -1,21 +1,11 @@
 """Enrich corpus papers with quality signals from OpenAlex.
 
-OpenAlex is a free, keyless, generously-rate-limited API — no sourcing-policy
-concerns here (unlike PMC/PubMed there's no paywall or crawl target, it's a
-public metadata aggregator). Requests carry `mailto` to join the "polite
-pool" for faster, more reliable responses, per OpenAlex's own guidance.
-
-Retraction status matters more than any other field here: a system that
-verifies research claims must not silently present a retracted paper as
-supporting evidence. `is_retracted` is therefore always a definite bool on
-Paper (see models.py), paired with `openalex_checked` so "not retracted" and
-"never checked" can't be confused with each other.
-
-DOI lookups are authoritative and are not backfilled by title search if they
-come back not-found (a bad match here contaminates the retraction/citation
-signal on the wrong paper — a real harm, not a cosmetic one). Only papers
-with no DOI at all fall back to a strict fuzzy title match; anything below
-threshold is logged as unmatched rather than guessed.
+Retraction status is the field that matters most: a claim verifier must not
+present a retracted paper as evidence. DOI lookups are authoritative and are
+never backfilled by title search, since a wrong match would attach retraction
+and citation signals to the wrong paper. Only papers with no DOI fall back to a
+strict fuzzy title match, and anything below threshold is logged as unmatched
+rather than guessed.
 
 Usage:
     python -m app.ingestion.openalex_enrich

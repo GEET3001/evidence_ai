@@ -1,12 +1,8 @@
 """Aggregate classified evidence into a VerdictResponse.
 
-Thresholds (MIN_RELEVANT_SOURCES, MIN_SIMILARITY, TIE_MARGIN) come from
-config.py. grade_certainty is GRADE-*inspired*, not real GRADE (see
-GradeCertainty's docstring) — a small, deterministic point system based on
-evidence-tier composition, not a model. explanation/limitations are template
-strings filled with real computed numbers, never LLM-generated (README:
-"explanations are faithful — derived from rationale sentences and computed
-values").
+Thresholds come from config.py. `grade_certainty` is GRADE-inspired rather than
+real GRADE: a deterministic set of adjustments over evidence-tier composition.
+Explanations are built from computed counts, never generated text.
 """
 
 from __future__ import annotations
@@ -25,7 +21,18 @@ from app.models import (
 _HIGH_TIERS = {PublicationTier.META_ANALYSIS, PublicationTier.SYSTEMATIC_REVIEW}
 _LOW_TIERS = {PublicationTier.CASE_REPORT, PublicationTier.OTHER}
 
-_LEVELS = [GradeCertainty.VERY_LOW, GradeCertainty.LOW, GradeCertainty.MODERATE, GradeCertainty.HIGH]
+_LEVELS = [
+    GradeCertainty.VERY_LOW,
+    GradeCertainty.LOW,
+    GradeCertainty.MODERATE,
+    GradeCertainty.HIGH,
+]
+
+# Thresholds for the grade adjustments in _adjust_grade.
+_UPGRADE_MIN_HIGH_TIER = 2
+_UPGRADE_MIN_DIRECTIONAL = 5
+_DOWNGRADE_LOW_TIER_SHARE = 0.5
+_DOWNGRADE_PREPRINT_SHARE = 0.3
 
 
 def _shift(level: GradeCertainty, delta: int) -> GradeCertainty:
@@ -49,6 +56,8 @@ def aggregate(
         verdict = Verdict.INSUFFICIENT_EVIDENCE
         grade = GradeCertainty.VERY_LOW
     else:
+        # Shares are taken over directional evidence only, so the amount of
+        # neutral evidence retrieved can't shift a verdict across TIE_MARGIN.
         support_share = len(support) / directional_count
         contradict_share = len(contradict) / directional_count
 
@@ -88,24 +97,21 @@ def aggregate(
 def _adjust_grade(
     grade: GradeCertainty, qualifying: list[EvidenceItem], directional_count: int
 ) -> GradeCertainty:
-    """Small, deterministic adjustments from a directional-verdict base grade.
-
-    The corpus is currently ~56% unclassified/OTHER tier, so "no strong tier
-    signal" is the common case here, not an edge case — the rule is built
-    around that, not around an idealized all-tiers-populated corpus.
-    """
+    """Adjust a base grade by the tier and provenance mix of the evidence."""
     n = len(qualifying)
     high_tier_count = sum(1 for e in qualifying if e.paper.publication_tier in _HIGH_TIERS)
     low_tier_count = sum(
-        1 for e in qualifying if e.paper.publication_tier in _LOW_TIERS or e.paper.publication_tier is None
+        1
+        for e in qualifying
+        if e.paper.publication_tier in _LOW_TIERS or e.paper.publication_tier is None
     )
     preprint_count = sum(1 for e in qualifying if e.paper.is_preprint)
 
-    if high_tier_count >= 2 and directional_count >= 5:
+    if high_tier_count >= _UPGRADE_MIN_HIGH_TIER and directional_count >= _UPGRADE_MIN_DIRECTIONAL:
         grade = _shift(grade, 1)
-    if n and low_tier_count / n > 0.5:
+    if n and low_tier_count / n > _DOWNGRADE_LOW_TIER_SHARE:
         grade = _shift(grade, -1)
-    if n and preprint_count / n > 0.3:
+    if n and preprint_count / n > _DOWNGRADE_PREPRINT_SHARE:
         grade = _shift(grade, -1)
     if n == settings.MIN_RELEVANT_SOURCES:
         grade = _shift(grade, -1)

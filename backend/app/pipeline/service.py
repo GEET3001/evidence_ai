@@ -1,10 +1,7 @@
-"""Startup-loaded singleton wiring retrieval + stance + verdict together.
+"""Singleton wiring retrieval, stance classification, and verdict together.
 
-Loaded once at FastAPI startup (see main.py's lifespan handler), not
-per-request and not lazily on first call — bart-large-mnli alone is ~1.6GB
-and slow to load; a lazy first load would make the first real user request
-pathologically slow, and would defer a missing-index error until a live
-request instead of surfacing it at boot.
+Built once by main.py's lifespan handler so model loading and a missing index
+both surface at boot rather than on the first request.
 """
 
 from __future__ import annotations
