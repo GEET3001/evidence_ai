@@ -146,13 +146,40 @@ best checkpoint is selected on macro F1 rather than accuracy, which the
 majority classes would dominate, or a single class's recall, which can improve
 at the other classes' expense.
 
-**Headline metrics: not yet available.** The notebook has not been run against
-a live GPU, so no fine-tuned checkpoint exists here. The measured zero-shot
-baseline it needs to beat is **50.4% accuracy, 0.507 macro F1, 52.9%
-CONTRADICT recall, 29.0% SUPPORT recall** on the held-out split — see
-`eval/results/classifier_comparison.md`, produced by
-`app/pipeline/compare_classifiers.py`. Re-running that script once a checkpoint
-exists fills in the comparison.
+**Headline metrics** (129-example held-out split, measured by
+`app/pipeline/compare_classifiers.py` — full report in
+`eval/results/classifier_comparison.md`):
+
+| Metric | Zero-shot baseline | Fine-tuned |
+|---|---|---|
+| Accuracy | 50.4% | 71.3% |
+| Macro F1 | 0.507 | 0.692 |
+| CONTRADICT recall | 52.9% | **29.4%** |
+| SUPPORT recall | 29.0% | 79.0% |
+| NEUTRAL recall | 87.9% | 100% |
+| Mean inference / passage | 109.1 ms | 80.1 ms |
+
+The notebook's own held-out evaluation
+(`eval/results/held_out_test_metrics.json`) agrees within noise: 72.9%
+accuracy, 0.688 macro F1, 23.5% CONTRADICT recall.
+
+**The default mode remains `zeroshot`.** Accuracy and macro F1 both improved
+by a wide margin, but CONTRADICT recall — the specific weakness fine-tuning
+was meant to address — got substantially *worse* (52.9% → 29.4%). The
+fine-tuned confusion matrix shows why: 24 of 34 CONTRADICT examples are
+predicted SUPPORT, so the model largely stopped distinguishing the direction
+of the evidence.
+
+**Known data artifact — NEUTRAL is separable by passage length.** The
+fine-tuned model scores a perfect 1.000 precision *and* recall on NEUTRAL,
+which is not a real result. `prepare_scifact.py`'s `build_triples` gives
+SUPPORT/CONTRADICT rows only the annotated rationale sentences as the passage,
+while NEUTRAL rows get the entire abstract. Passage length therefore leaks the
+NEUTRAL label, and the model can take that shortcut instead of learning
+stance. This also inflates macro F1, since one of its three components is a
+free 1.000. Fixing this — sampling a comparable span for NEUTRAL rows rather
+than the full abstract — is the prerequisite for any retraining attempt, ahead
+of tuning `WEIGHTING_MODE`.
 
 ### Obtaining or retraining the checkpoint
 

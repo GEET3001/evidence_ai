@@ -1,0 +1,17 @@
+{
+  "test_loss": 0.4722021222114563,
+  "test_accuracy": 0.7286821705426356,
+  "test_macro_f1": 0.6884995132804894,
+  "test_contradict_recall": 0.23529411764705882,
+  "test_contradict_precision": 0.47058823529411764,
+  "test_contradict_f1": 0.3137254901960784,
+  "test_support_precision": 0.6708860759493671,
+  "test_support_recall": 0.8548387096774194,
+  "test_support_f1": 0.75177304964539,
+  "test_neutral_precision": 1.0,
+  "test_neutral_recall": 1.0,
+  "test_neutral_f1": 1.0,
+  "test_runtime": 2.9961,
+  "test_samples_per_second": 43.055,
+  "test_steps_per_second": 5.674
+}
