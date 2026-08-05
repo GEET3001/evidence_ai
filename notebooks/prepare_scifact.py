@@ -36,6 +36,18 @@ actually loading the data — see the printed schema dump each run):
    ZERO evidence annotations of any kind (not even `cited_doc_ids`) — it's
    the held-out leaderboard set with hidden labels, not usable for building
    triples. `validation` is the closest thing to a labeled held-out set.
+
+3. NEUTRAL passages must be LENGTH-MATCHED to the labeled classes. The first
+   version of this script gave NEUTRAL rows the cited doc's entire abstract
+   while SUPPORT/CONTRADICT rows got only their annotated rationale sentences.
+   That leaked the label through passage length — median 1158 chars vs. ~200,
+   and a single length threshold predicted NEUTRAL at 99.0% accuracy against a
+   74.5% majority-class floor. The first fine-tuning run learned exactly that
+   shortcut: perfect 1.000 precision and recall on NEUTRAL, CONTRADICT recall
+   collapsing to 29.4%, below the zero-shot baseline it was meant to beat.
+   NEUTRAL passages are now a contiguous span sampled from the abstract, sized
+   from the empirical rationale-length distribution. `report_length_leak`
+   re-measures the separability every run so this cannot regress unnoticed.
 """
 
 from __future__ import annotations
@@ -109,11 +121,52 @@ def print_schema(claims_by_split: dict, corpus: dict[int, dict]) -> None:
     print("=" * 70)
 
 
-def build_triples(claims, corpus: dict[int, dict], split: str) -> tuple[list[dict], int]:
+def evidence_span_lengths(claims_by_split: dict) -> list[int]:
+    """Sentence counts of every annotated rationale, pooled across splits.
+
+    Sampled from (rather than reduced to a mean) so NEUTRAL span lengths
+    reproduce the real shape of the distribution — which is heavily
+    single-sentence — instead of clustering at an average nothing looks like.
+    """
+    lengths = [
+        len(row["evidence_sentences"])
+        for ds in claims_by_split.values()
+        for row in ds
+        if row["evidence_label"] and row["evidence_sentences"]
+    ]
+    if not lengths:
+        raise ValueError("No annotated evidence spans found — cannot size NEUTRAL passages.")
+    return lengths
+
+
+def build_triples(
+    claims,
+    corpus: dict[int, dict],
+    split: str,
+    span_lengths: list[int],
+    rng: random.Random,
+) -> tuple[list[dict], int]:
     """Row-wise: SUPPORT/CONTRADICT rows use the annotated rationale sentences
     as the passage; NOINFO rows (empty evidence_label but real citations) get
-    one NEUTRAL triple per cited doc, using that doc's full abstract — there's
-    no sentence-level annotation to key on for an unevidenced citation."""
+    one NEUTRAL triple per cited doc.
+
+    NEUTRAL passages are a CONTIGUOUS SPAN sampled from the cited abstract, not
+    the whole abstract. Using the full abstract leaked the label through length:
+    measured on the previous output, NEUTRAL ran a median 1158 chars against
+    ~200 for SUPPORT/CONTRADICT, and a single length threshold separated NEUTRAL
+    from the rest with 99.0% accuracy. The fine-tuned model duly scored a
+    perfect 1.000 precision AND recall on NEUTRAL while CONTRADICT recall fell
+    to 29.4% — it had learned "long passage = NEUTRAL" instead of learning
+    stance (see eval/results/classifier_comparison.md).
+
+    Span length is drawn from the empirical rationale-length pool, so NEUTRAL
+    inherits the same length distribution as the labeled classes rather than a
+    hand-picked constant. Sampling stays label-valid: the claim was never
+    annotated as supported or contradicted by this doc, and any sub-span of an
+    abstract that carries no stance also carries none — the full abstract
+    strictly contained every span we might now draw, so this cannot introduce
+    label noise the previous version didn't already have.
+    """
     triples = []
     skipped_missing_doc = 0
 
@@ -151,7 +204,14 @@ def build_triples(claims, corpus: dict[int, dict], split: str) -> tuple[list[dic
                 if doc is None:
                     skipped_missing_doc += 1
                     continue
-                passage = " ".join(doc["abstract"])
+                abstract = doc["abstract"]
+                span = rng.choice(span_lengths)
+                if span >= len(abstract):
+                    sentences = list(abstract)
+                else:
+                    start = rng.randrange(len(abstract) - span + 1)
+                    sentences = list(abstract[start : start + span])
+                passage = " ".join(sentences)
                 if not passage:
                     continue
                 triples.append(
@@ -235,6 +295,48 @@ def report_distribution(all_triples: list[dict]) -> None:
     print("=" * 70)
 
 
+def report_length_leak(all_triples: list[dict]) -> None:
+    """Length parity between NEUTRAL and the labeled classes is the thing this
+    script's NEUTRAL sampling exists to protect, so it is measured every run
+    rather than assumed. The separability number is the honest test: the best
+    accuracy any single passage-length threshold can reach at predicting
+    NEUTRAL. At parity it should sit near the 74.5% majority-class rate; the
+    full-abstract version scored 99.0%."""
+    labeled = [len(t["passage"]) for t in all_triples if t["label"] != "NEUTRAL"]
+    neutral = [len(t["passage"]) for t in all_triples if t["label"] == "NEUTRAL"]
+    if not labeled or not neutral:
+        return
+
+    print("\n" + "=" * 70)
+    print("Passage-length parity check (NEUTRAL vs. SUPPORT/CONTRADICT)")
+    print("=" * 70)
+    for name, lengths in (("SUPPORT+CONTRADICT", labeled), ("NEUTRAL", neutral)):
+        ordered = sorted(lengths)
+        median = ordered[len(ordered) // 2]
+        print(
+            f"  {name:<20} n={len(ordered):<5} median={median:>5} chars  "
+            f"mean={sum(ordered) / len(ordered):>6.0f}"
+        )
+
+    scored = [(n, 1) for n in neutral] + [(n, 0) for n in labeled]
+    majority = max(len(labeled), len(neutral)) / len(scored)
+    best_acc = max(
+        sum(1 for length, is_neutral in scored if (length >= t) == bool(is_neutral)) / len(scored)
+        for t in range(50, 3000, 25)
+    )
+    print(
+        f"\n  Best single length-threshold accuracy at predicting NEUTRAL: "
+        f"{best_acc:.1%}\n  Majority-class floor (no signal): {majority:.1%}"
+    )
+    if best_acc > majority + 0.05:
+        print(
+            "\n  WARNING: passage length still predicts NEUTRAL well above the "
+            "majority floor. A model can exploit this instead of learning "
+            "stance — do not train on this data until the gap closes."
+        )
+    print("=" * 70)
+
+
 def print_examples(all_triples: list[dict], rng: random.Random) -> None:
     print("\n" + "=" * 70)
     print("Example rows per class")
@@ -266,7 +368,14 @@ def main() -> None:
         help="Investigate HealthVer/PUBHEALTH as additional CONTRADICT sources "
         "and report why each is or isn't included (see report_health_datasets).",
     )
-    parser.add_argument("--seed", type=int, default=42, help="For the example-row sample only.")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Seeds NEUTRAL span sampling and the example-row sample. Changing "
+        "it changes the generated passages, so keep it fixed across a train/eval "
+        "cycle or the data underneath a checkpoint shifts.",
+    )
     args = parser.parse_args()
 
     print("Downloading SciFact (auto-converted parquet, refs/convert/parquet)...")
@@ -274,9 +383,14 @@ def main() -> None:
     claims_by_split = {split: load_claims_split(split) for split in SPLITS}
     print_schema(claims_by_split, corpus)
 
+    span_lengths = evidence_span_lengths(claims_by_split)
+    span_rng = random.Random(args.seed)
+
     all_triples: list[dict] = []
     for split in SPLITS:
-        triples, skipped = build_triples(claims_by_split[split], corpus, split)
+        triples, skipped = build_triples(
+            claims_by_split[split], corpus, split, span_lengths, span_rng
+        )
         write_jsonl(triples, OUTPUT_DIR / f"{split}.jsonl")
         print(f"\n{split}: wrote {len(triples)} triples to {OUTPUT_DIR / f'{split}.jsonl'}")
         if skipped:
@@ -293,6 +407,7 @@ def main() -> None:
         all_triples.extend(t for t in triples if t["split"] != "test")
 
     report_distribution(all_triples)
+    report_length_leak(all_triples)
     print_examples(all_triples, random.Random(args.seed))
 
     if args.include_health:
