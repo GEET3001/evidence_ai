@@ -146,9 +146,15 @@ best checkpoint is selected on macro F1 rather than accuracy, which the
 majority classes would dominate, or a single class's recall, which can improve
 at the other classes' expense.
 
-**Headline metrics** (129-example held-out split, measured by
-`app/pipeline/compare_classifiers.py` — full report in
-`eval/results/classifier_comparison.md`):
+**Headline metrics — SUPERSEDED, retrain pending.** The numbers below come
+from a checkpoint trained on data that carried a label leak (see the artifact
+note after the table). The leak is now fixed in `prepare_scifact.py`, but the
+model has not yet been retrained on the corrected data, so these remain the
+only measured results. Treat them as the record of a failed attempt, not as
+the model's ceiling.
+
+(129-example held-out split, measured by `app/pipeline/compare_classifiers.py`
+— full report in `eval/results/classifier_comparison.md`):
 
 | Metric | Zero-shot baseline | Fine-tuned |
 |---|---|---|
@@ -170,21 +176,34 @@ fine-tuned confusion matrix shows why: 24 of 34 CONTRADICT examples are
 predicted SUPPORT, so the model largely stopped distinguishing the direction
 of the evidence.
 
-**Known data artifact — NEUTRAL is separable by passage length.** The
-fine-tuned model scores a perfect 1.000 precision *and* recall on NEUTRAL,
-which is not a real result. `prepare_scifact.py`'s `build_triples` gives
-SUPPORT/CONTRADICT rows only the annotated rationale sentences as the passage,
-while NEUTRAL rows get the entire abstract. Passage length therefore leaks the
-NEUTRAL label, and the model can take that shortcut instead of learning
-stance. This also inflates macro F1, since one of its three components is a
-free 1.000. Fixing this — sampling a comparable span for NEUTRAL rows rather
-than the full abstract — is the prerequisite for any retraining attempt, ahead
-of tuning `WEIGHTING_MODE`.
+**Root cause — NEUTRAL was separable by passage length (FIXED in the data
+prep, not yet retrained).** The fine-tuned model scored a perfect 1.000
+precision *and* recall on NEUTRAL, which is not a real result. `build_triples`
+gave SUPPORT/CONTRADICT rows only their annotated rationale sentences while
+NEUTRAL rows got the entire abstract — a median 1158 chars against ~200. A
+single length threshold predicted NEUTRAL at 99.0% accuracy against a 74.5%
+majority-class floor, so the model learned "long passage = NEUTRAL" instead of
+learning stance. That also inflated macro F1, one of whose three components
+was a free 1.000, which is why the headline numbers looked like an improvement
+while the metric that mattered regressed.
+
+`prepare_scifact.py` now samples a contiguous span for NEUTRAL rows, sized by
+drawing from the empirical rationale-length distribution. Measured after the
+fix: **74.5% separability — exactly the majority-class floor**, i.e. passage
+length carries no information about the label. `report_length_leak()` re-checks
+this on every run and warns if it regresses. Class balance and triple counts
+are unchanged, so the held-out split indices remain valid.
+
+Retraining on the corrected data is the next step; `WEIGHTING_MODE` tuning is
+only worth attempting after that, since the previous run's class behaviour was
+confounded by the leak.
 
 ### Obtaining or retraining the checkpoint
 
 1. Run `notebooks/prepare_scifact.py` to produce
-   `data/scifact/{train,validation,test}.jsonl`.
+   `data/scifact/{train,validation,test}.jsonl`. Keep `--seed` fixed across a
+   train/eval cycle — it seeds NEUTRAL span sampling, so changing it changes
+   the passages underneath a checkpoint.
 2. Upload `train.jsonl` and `validation.jsonl` to Google Drive, then run
    `notebooks/train_stance.ipynb` end to end on a free Colab T4.
 3. Unzip the model from the notebook's final cell into
@@ -192,6 +211,11 @@ of tuning `WEIGHTING_MODE`.
 4. Set `STANCE_MODEL_MODE=finetuned` in `backend/.env`.
 5. Run `python -m app.pipeline.compare_classifiers` for the real
    fine-tuned-vs-baseline numbers.
+
+Training needs the T4: a 4GB laptop GPU cannot hold this fine-tune. DeBERTa-v3's
+128100-token vocabulary makes the embedding matrix alone cost 393MB of gradient
+plus 786MB of AdamW state on top of the rest of the model, which OOMs a 4GB card
+even with gradient checkpointing and the embeddings frozen (measured).
 
 ## Constraints
 
