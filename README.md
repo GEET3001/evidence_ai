@@ -146,46 +146,36 @@ best checkpoint is selected on macro F1 rather than accuracy, which the
 majority classes would dominate, or a single class's recall, which can improve
 at the other classes' expense.
 
-**Headline metrics — SUPERSEDED, retrain pending.** The numbers below come
-from a checkpoint trained on data that carried a label leak (see the artifact
-note after the table). The leak is now fixed in `prepare_scifact.py`, but the
-model has not yet been retrained on the corrected data, so these remain the
-only measured results. Treat them as the record of a failed attempt, not as
-the model's ceiling.
-
-(129-example held-out split, measured by `app/pipeline/compare_classifiers.py`
-— full report in `eval/results/classifier_comparison.md`):
+**Headline metrics** (129-example held-out split, measured by
+`app/pipeline/compare_classifiers.py` — full report in
+`eval/results/classifier_comparison.md`). The fine-tuned column is the
+checkpoint trained on leak-corrected data:
 
 | Metric | Zero-shot baseline | Fine-tuned |
 |---|---|---|
-| Accuracy | 50.4% | 71.3% |
-| Macro F1 | 0.507 | 0.692 |
-| CONTRADICT recall | 52.9% | **29.4%** |
-| SUPPORT recall | 29.0% | 79.0% |
-| NEUTRAL recall | 87.9% | 100% |
-| Mean inference / passage | 109.1 ms | 80.1 ms |
+| Accuracy | 51.9% | 58.9% |
+| Macro F1 | 0.521 | 0.518 |
+| CONTRADICT recall | 52.9% | **17.6%** |
+| SUPPORT recall | 29.0% | 82.3% |
+| NEUTRAL recall | 93.9% | 57.6% |
+| Mean inference / passage | 36.4 ms | 26.1 ms |
 
-The notebook's own held-out evaluation
-(`eval/results/held_out_test_metrics.json`) agrees within noise: 72.9%
-accuracy, 0.688 macro F1, 23.5% CONTRADICT recall.
+**The default mode remains `zeroshot`.** Fine-tuning buys 7 points of
+accuracy, ties on macro F1, and makes CONTRADICT recall substantially *worse*
+(52.9% → 17.6%) — the specific weakness fine-tuning was meant to address. The
+confusion matrix shows the failure directly: 25 of 34 CONTRADICT examples are
+predicted SUPPORT. The model is not distinguishing the direction of the
+evidence; it predicts SUPPORT for 89 of 129 examples (69%) when SUPPORT is
+only 48% of the set.
 
-**The default mode remains `zeroshot`.** Accuracy and macro F1 both improved
-by a wide margin, but CONTRADICT recall — the specific weakness fine-tuning
-was meant to address — got substantially *worse* (52.9% → 29.4%). The
-fine-tuned confusion matrix shows why: 24 of 34 CONTRADICT examples are
-predicted SUPPORT, so the model largely stopped distinguishing the direction
-of the evidence.
-
-**Root cause — NEUTRAL was separable by passage length (FIXED in the data
-prep, not yet retrained).** The fine-tuned model scored a perfect 1.000
-precision *and* recall on NEUTRAL, which is not a real result. `build_triples`
-gave SUPPORT/CONTRADICT rows only their annotated rationale sentences while
-NEUTRAL rows got the entire abstract — a median 1158 chars against ~200. A
-single length threshold predicted NEUTRAL at 99.0% accuracy against a 74.5%
-majority-class floor, so the model learned "long passage = NEUTRAL" instead of
-learning stance. That also inflated macro F1, one of whose three components
-was a free 1.000, which is why the headline numbers looked like an improvement
-while the metric that mattered regressed.
+**A label leak was found and fixed, and it was not the cause.** An earlier
+checkpoint scored a perfect 1.000 precision *and* recall on NEUTRAL, which is
+not a real result. `build_triples` gave SUPPORT/CONTRADICT rows only their
+annotated rationale sentences while NEUTRAL rows got the entire abstract — a
+median 1158 chars against ~200. A single length threshold predicted NEUTRAL at
+99.0% accuracy against a 74.5% majority-class floor, so the model was learning
+"long passage = NEUTRAL" instead of learning stance, and macro F1 was inflated
+by a free 1.000 component.
 
 `prepare_scifact.py` now samples a contiguous span for NEUTRAL rows, sized by
 drawing from the empirical rationale-length distribution. Measured after the
@@ -194,9 +184,23 @@ length carries no information about the label. `report_length_leak()` re-checks
 this on every run and warns if it regresses. Class balance and triple counts
 are unchanged, so the held-out split indices remain valid.
 
-Retraining on the corrected data is the next step; `WEIGHTING_MODE` tuning is
-only worth attempting after that, since the previous run's class behaviour was
-confounded by the leak.
+Retraining on the corrected data confirmed the fix worked — NEUTRAL fell from
+a fake 1.000/1.000 to a real 0.655/0.576, so the model is no longer riding
+passage length — but it did **not** recover CONTRADICT recall, which fell
+further (29.4% → 17.6%). The leak was a real measurement artifact inflating
+the headline numbers; it was not what broke the CONTRADICT class. The
+remaining suspect is class imbalance (SUPPORT 47.8% vs CONTRADICT 26.6%) with
+`WEIGHTING_MODE = 'none'`, which is the next lever to try.
+
+The pre-fix run's own notebook metrics are kept at
+`eval/results/held_out_test_metrics_leaked_run.json` as the record of what a
+leaked split looks like from the inside — note the 1.000/1.000/1.000 NEUTRAL
+row.
+
+Baseline numbers shift slightly against the previously recorded run (50.4% →
+51.9% accuracy) because the leak fix rewrote the NEUTRAL passages, so the
+zero-shot model is being scored on different text for a third of the split.
+The split indices themselves are unchanged.
 
 ### Obtaining or retraining the checkpoint
 
@@ -204,8 +208,11 @@ confounded by the leak.
    `data/scifact/{train,validation,test}.jsonl`. Keep `--seed` fixed across a
    train/eval cycle — it seeds NEUTRAL span sampling, so changing it changes
    the passages underneath a checkpoint.
-2. Upload `train.jsonl` and `validation.jsonl` to Google Drive, then run
-   `notebooks/train_stance.ipynb` end to end on a free Colab T4.
+2. Upload all three files to `MyDrive/EvidenceAI/data/scifact/` — including
+   the 0-byte `test.jsonl`, which the notebook opens unconditionally — then
+   run `notebooks/train_stance.ipynb` end to end on a free Colab T4. The
+   project folder must be named exactly `EvidenceAI`; `PROJECT_DIR` is
+   hardcoded.
 3. Unzip the model from the notebook's final cell into
    `backend/models/stance-deberta/`. That directory is gitignored.
 4. Set `STANCE_MODEL_MODE=finetuned` in `backend/.env`.
