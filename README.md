@@ -123,7 +123,8 @@ The stance classifier runs in one of two modes, set by `STANCE_MODEL_MODE` in
   training. Works out of the box.
 - **`finetuned`** — requires a checkpoint at `STANCE_MODEL_PATH` (default
   `backend/models/stance-deberta/`). Startup fails if it is missing rather than
-  falling back to zero-shot.
+  falling back to zero-shot. Kept as a supported path, but it measured worse
+  than the baseline on the metric that matters — see the comparison below.
 
 **Base model:** `microsoft/deberta-v3-base`, falling back to `roberta-base` if
 the DeBERTa tokenizer fails to load. The 3-way head is labelled SUPPORT /
@@ -188,9 +189,17 @@ Retraining on the corrected data confirmed the fix worked — NEUTRAL fell from
 a fake 1.000/1.000 to a real 0.655/0.576, so the model is no longer riding
 passage length — but it did **not** recover CONTRADICT recall, which fell
 further (29.4% → 17.6%). The leak was a real measurement artifact inflating
-the headline numbers; it was not what broke the CONTRADICT class. The
-remaining suspect is class imbalance (SUPPORT 47.8% vs CONTRADICT 26.6%) with
-`WEIGHTING_MODE = 'none'`, which is the next lever to try.
+the headline numbers; it was not what broke the CONTRADICT class.
+
+**This line of work is closed.** Zero-shot is what ships. Two fine-tuning runs
+on the same data — one leaked, one clean — both landed below the baseline on
+CONTRADICT recall, and the clean run only tied it on macro F1. The untested
+hypothesis is class imbalance (SUPPORT 47.8% vs CONTRADICT 26.6%) against
+`WEIGHTING_MODE = 'none'`; anyone picking this up should try
+`WEIGHTING_MODE = 'balanced'` first. But 1,739 SciFact triples is a small
+corpus for teaching a 3-way directional distinction, and the honest reading is
+that this dataset at this size does not beat an NLI model that was pretrained
+on far more entailment data.
 
 The pre-fix run's own notebook metrics are kept at
 `eval/results/held_out_test_metrics_leaked_run.json` as the record of what a
@@ -202,7 +211,11 @@ Baseline numbers shift slightly against the previously recorded run (50.4% →
 zero-shot model is being scored on different text for a third of the split.
 The split indices themselves are unchanged.
 
-### Obtaining or retraining the checkpoint
+### Reproducing the fine-tuned checkpoint
+
+Not required to run EvidenceAI — `zeroshot` is the default and needs no
+checkpoint. These steps exist so the measured comparison above can be
+reproduced or extended.
 
 1. Run `notebooks/prepare_scifact.py` to produce
    `data/scifact/{train,validation,test}.jsonl`. Keep `--seed` fixed across a
