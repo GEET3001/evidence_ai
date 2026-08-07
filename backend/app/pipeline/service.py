@@ -24,15 +24,25 @@ class PipelineService:
         start = time.perf_counter()
         verification_id = str(uuid.uuid4())
 
-        results = self.retrieval.search(claim)
+        search_result = self.retrieval.search(claim)
+
+        # Skip stance classification entirely when the corpus doesn't cover the
+        # claim: it's 20-40 NLI forward passes to produce labels the verdict
+        # layer is about to discard.
+        if not verdict_module.is_covered_by_corpus(search_result.coverage):
+            response_time_ms = (time.perf_counter() - start) * 1000
+            return verdict_module.aggregate(
+                verification_id, claim, [], search_result.coverage, response_time_ms
+            )
+
         evidence: list[EvidenceItem] = []
-        for passage, paper, relevance_score in results:
-            stance_result = self.stance_classifier.classify(passage.text, claim)
+        for hit in search_result.passages:
+            stance_result = self.stance_classifier.classify(hit.passage.text, claim)
             evidence.append(
                 EvidenceItem(
-                    passage=passage,
-                    paper=paper,
-                    relevance_score=relevance_score,
+                    passage=hit.passage,
+                    paper=hit.paper,
+                    relevance_score=hit.fused_score,
                     stance=stance_result.stance,
                     stance_confidence=stance_result.confidence,
                     rationale_sentences=stance_result.rationale_sentences,
@@ -41,7 +51,9 @@ class PipelineService:
             )
 
         response_time_ms = (time.perf_counter() - start) * 1000
-        return verdict_module.aggregate(verification_id, claim, evidence, response_time_ms)
+        return verdict_module.aggregate(
+            verification_id, claim, evidence, search_result.coverage, response_time_ms
+        )
 
 
 _service: PipelineService | None = None

@@ -50,11 +50,30 @@ class Settings(BaseSettings):
     BM25_WEIGHT: float = 0.4
     DENSE_WEIGHT: float = 0.6
 
+    # --- Corpus-coverage gate ---
+    # Answers "is this claim about anything in the corpus at all?", which
+    # MIN_SIMILARITY structurally cannot: it thresholds a per-query
+    # min-max-normalized score, so the top hit of every query approaches 1.0
+    # regardless of true relevance. These operate on raw, pre-normalization
+    # scores and are therefore comparable across queries.
+    #
+    # Values are calibrated empirically, not guessed — see
+    # eval/results/similarity_calibration.md and
+    # `python -m app.pipeline.calibrate_coverage` to regenerate. Rebuilding the
+    # index or changing EMBEDDING_MODEL invalidates them; re-run calibration.
+    COVERAGE_TOP_K: int = 10
+    # max_cosine does not separate the two claim sets on its own; it sits below
+    # the lowest observed in-domain value as a safety net. mean_topk_cosine is
+    # the signal that actually separates, by a thin 0.006 margin.
+    MIN_MAX_COSINE: float = 0.911
+    MIN_MEAN_TOPK_COSINE: float = 0.905
+
     # --- Verdict / insufficient-evidence thresholds ---
     # Minimum number of distinct sources required before a verdict is issued
     # rather than "insufficient evidence".
     MIN_RELEVANT_SOURCES: int = 3
-    # Minimum retrieval similarity score for a passage to count as relevant.
+    # Minimum *relative* rank score for a passage to count as relevant, applied
+    # only after the coverage gate above has established the claim is on-topic.
     MIN_SIMILARITY: float = 0.45
     # Maximum allowed gap between support-share and contradict-share for a
     # verdict to be called "mixed" instead of a clear support/contradict.

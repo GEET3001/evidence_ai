@@ -24,11 +24,13 @@ costs nothing, and it avoids the common hybrid-search failure where a passage
 that ranks well on one signal is dropped because it fell outside the other
 retriever's cutoff.
 
-Scores are min-max normalized per query before fusion. This bounds the fused
-score in [0,1], but it is also a known weakness: because normalization is
-relative to the current query, the top-ranked passage for an unrelated claim is
-still stretched toward 1.0 and can clear `MIN_SIMILARITY`. An absolute
-similarity scale would fix it.
+Scores are min-max normalized per query before fusion, which bounds the fused
+score in [0,1] and lets two incomparable scales be summed. That score is used
+for **ordering only**. It cannot also serve as a relevance threshold: because
+normalization is relative to the current query, the top-ranked passage of an
+unrelated claim is stretched toward 1.0 too. Raw pre-normalization cosine and
+BM25 are therefore carried alongside it, and the corpus-coverage gate thresholds
+those instead — see "ranking and gating are separate" in the README.
 
 ### Rationale sentences come from the classifier
 

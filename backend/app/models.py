@@ -34,6 +34,38 @@ class Verdict(str, Enum):
     INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
 
 
+class InsufficientReason(str, Enum):
+    """Why a verdict came back INSUFFICIENT_EVIDENCE.
+
+    Both values are INSUFFICIENT_EVIDENCE to the caller; they differ in what
+    went wrong, which the explanation and limitations spell out.
+    """
+
+    # Nothing in the corpus is about this claim at all.
+    NOT_COVERED_BY_CORPUS = "NOT_COVERED_BY_CORPUS"
+    # The corpus does cover it, but too few sources qualified or none of the
+    # qualifying evidence carried a direction.
+    EVIDENCE_INCONCLUSIVE = "EVIDENCE_INCONCLUSIVE"
+
+
+class CoverageSignals(BaseModel):
+    """Absolute retrieval signals, computed before any normalisation.
+
+    EvidenceItem.relevance_score is min-max normalised per query, so it only
+    ever means "best in this result set" — the top hit of every query is
+    pushed toward 1.0 no matter how irrelevant it is. These values are raw and
+    therefore comparable across queries, which is what makes them usable as a
+    corpus-coverage gate. See eval/results/similarity_calibration.md.
+    """
+
+    max_cosine: float = Field(description="Highest raw claim-passage cosine in the corpus.")
+    mean_topk_cosine: float = Field(
+        description="Mean raw cosine over the top-k passages by cosine."
+    )
+    top_bm25: float = Field(description="Highest raw BM25 score in the corpus.")
+    top_k: int = Field(description="k used for mean_topk_cosine.")
+
+
 class GradeCertainty(str, Enum):
     """GRADE-inspired confidence rating for the verdict."""
 
@@ -174,6 +206,14 @@ class VerdictResponse(BaseModel):
     claim: str
     pico: PICOClaim
     verdict: Verdict
+    insufficient_reason: InsufficientReason | None = Field(
+        default=None,
+        description="Set only when verdict is INSUFFICIENT_EVIDENCE.",
+    )
+    coverage: CoverageSignals | None = Field(
+        default=None,
+        description="Absolute retrieval signals behind the corpus-coverage gate.",
+    )
     grade_certainty: GradeCertainty
     support_count: int
     contradict_count: int

@@ -104,15 +104,72 @@ unexpectedly, torch was installed from the CPU wheel index. Send one throwaway
 `/verify` call before recording so the first real request is not paying for
 lazy CUDA context init.
 
-**Known limitation.** `MIN_SIMILARITY` is compared against a per-query,
-min-max-normalized relevance score, so the top-ranked passage for any claim —
-including one unrelated to the corpus — is stretched toward 1.0 and can clear
-the threshold. An off-corpus claim ("eating chocolate cake improves stock
-market forecasting") returned a confident `CONTRADICTED` verdict rather than
-`INSUFFICIENT_EVIDENCE`. `INSUFFICIENT_EVIDENCE` still fires correctly when
-qualifying evidence carries no directional signal, just not for "this claim is
-unrelated to the corpus". Fixing this needs an absolute similarity scale rather
-than a per-query one.
+## Design: ranking and gating are separate
+
+Two different questions get asked of retrieval, and they need different scores.
+
+**Ranking — "which passages are most relevant?"** Hybrid BM25 + dense fusion,
+min-max normalized per query. Normalization is correct here: it puts two
+incomparable scales on a common footing so they can be summed.
+
+**Gating — "is this claim about anything in the corpus at all?"** The same
+normalized score cannot answer this. Because it is relative to the current
+query, the top-ranked passage of *every* query is stretched toward 1.0,
+including a query the corpus knows nothing about. A threshold on it asks "is
+this the best of what we found?", never "is any of this actually relevant?".
+Off-corpus claims sailed through it: "eating chocolate cake improves stock
+market forecasting" came back a confident `CONTRADICTED`.
+
+So gating uses absolute signals, captured **before** any normalization and
+carried through `RetrievedPassage` / `CoverageSignals` untouched:
+
+- `max_cosine` — highest raw claim-passage cosine. Bounded, so comparable
+  across queries.
+- `mean_topk_cosine` — mean raw cosine over the top `COVERAGE_TOP_K`.
+  Off-corpus claims are uniformly low, which makes the mean a steadier signal
+  than the max, where one incidentally-similar passage can carry an unrelated
+  claim over the line.
+- `top_bm25` — measured and returned, but deliberately **not** part of the
+  gate. It is unbounded and corpus-frequency-dependent, so there is no stable
+  cross-query scale to put a fixed floor on. It is kept as a diagnostic:
+  near-zero lexical overlap is strong independent evidence of an off-corpus
+  claim.
+
+A claim failing either cosine floor returns `INSUFFICIENT_EVIDENCE` with
+`insufficient_reason = NOT_COVERED_BY_CORPUS`, and no evidence list — the
+retrieved passages are the best of a bad set, and showing them as "evidence"
+was the exact confusion this fixes. That is a distinct reason from
+`EVIDENCE_INCONCLUSIVE`, which means the corpus does cover the claim but the
+qualifying evidence carried no direction. Both read as `INSUFFICIENT_EVIDENCE`
+to the user; the difference shows up in the explanation and limitations.
+
+**Thresholds are calibrated, not guessed.** The useful range of raw cosine is a
+property of the embedding model and this corpus, so it has to be measured.
+`python -m app.pipeline.calibrate_coverage` scores 20 in-domain mental health
+claims against 20 off-corpus ones (other scientific domains, nonsense claims,
+and near-miss biomedical claims), prints both distributions, and picks floors
+from the gap. Full data and method:
+[`eval/results/similarity_calibration.md`](eval/results/similarity_calibration.md).
+Results are `MIN_MAX_COSINE = 0.911` and `MIN_MEAN_TOPK_COSINE = 0.905` in
+`config.py`; end to end this turned 9 confident-but-wrong off-corpus verdicts
+into `NOT_COVERED_BY_CORPUS` while changing no in-domain verdict at all.
+
+**Residual failure mode, honestly.** This is a working guard, not a solved
+problem:
+
+- `mean_topk_cosine` separates the two claim sets by **0.006** — real, but thin.
+- `max_cosine` does **not** separate them (highest off-corpus 0.926 exceeds
+  lowest in-domain 0.916), so it is set below the lowest in-domain observation
+  as a safety net rather than tuned up at the cost of false rejections.
+- Recalibrating on half the claims and testing on the held-out half catches
+  9/9 off-corpus but wrongly rejects 4/10 in-domain — the honest generalization
+  signal at this sample size.
+
+Near-miss claims are where it will break: real biomedical claims that sound in
+scope but aren't ("statins reduce cardiovascular mortality", "metformin
+improves glycaemic control") sit closest to the boundary and are caught with
+the least margin. Rebuilding the index or changing `EMBEDDING_MODEL` invalidates
+these thresholds; re-run the calibration.
 
 ## Model Provenance
 

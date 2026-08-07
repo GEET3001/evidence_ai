@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from app.config import settings
 from app.models import (
+    CoverageSignals,
     EvidenceItem,
     GradeCertainty,
+    InsufficientReason,
     PICOClaim,
     PublicationTier,
     Stance,
@@ -40,20 +42,68 @@ def _shift(level: GradeCertainty, delta: int) -> GradeCertainty:
     return _LEVELS[max(0, min(len(_LEVELS) - 1, idx + delta))]
 
 
+def is_covered_by_corpus(coverage: CoverageSignals) -> bool:
+    """Whether the corpus contains anything genuinely about this claim.
+
+    Both signals must clear their floor. max_cosine alone is noisy — one
+    incidentally-similar passage can carry an otherwise unrelated claim over
+    the line — so the top-k mean is required as well, which off-corpus claims
+    fail uniformly.
+    """
+    return (
+        coverage.max_cosine >= settings.MIN_MAX_COSINE
+        and coverage.mean_topk_cosine >= settings.MIN_MEAN_TOPK_COSINE
+    )
+
+
 def aggregate(
     verification_id: str,
     claim: str,
     evidence: list[EvidenceItem],
+    coverage: CoverageSignals,
     response_time_ms: float,
 ) -> VerdictResponse:
+    # The coverage gate runs before anything else. Ranking a claim the corpus
+    # knows nothing about still produces a top hit and a stance for it, so
+    # every downstream count is meaningless until this passes.
+    if not is_covered_by_corpus(coverage):
+        return VerdictResponse(
+            verification_id=verification_id,
+            claim=claim,
+            pico=PICOClaim(raw_claim=claim),
+            verdict=Verdict.INSUFFICIENT_EVIDENCE,
+            insufficient_reason=InsufficientReason.NOT_COVERED_BY_CORPUS,
+            coverage=coverage,
+            grade_certainty=GradeCertainty.VERY_LOW,
+            support_count=0,
+            contradict_count=0,
+            neutral_count=0,
+            # Deliberately empty. The retrieved passages are the best of a bad
+            # set, and listing them as "evidence" next to this verdict is the
+            # exact confusion that made the old behaviour misleading.
+            evidence=[],
+            conflicting_pairs=[],
+            explanation=_build_not_covered_explanation(coverage),
+            limitations=[
+                "This claim appears to fall outside the corpus's subject area, "
+                "so no assessment was attempted. It is not evidence the claim "
+                "is false — only that this corpus cannot speak to it.",
+                "The corpus covers mental health research; claims from other "
+                "domains will not be verifiable here.",
+            ],
+            response_time_ms=response_time_ms,
+        )
+
     qualifying = [e for e in evidence if e.relevance_score >= settings.MIN_SIMILARITY]
     support = [e for e in qualifying if e.stance == Stance.SUPPORT]
     contradict = [e for e in qualifying if e.stance == Stance.CONTRADICT]
     neutral = [e for e in qualifying if e.stance == Stance.NEUTRAL]
     directional_count = len(support) + len(contradict)
+    insufficient_reason = None
 
     if len(qualifying) < settings.MIN_RELEVANT_SOURCES or directional_count == 0:
         verdict = Verdict.INSUFFICIENT_EVIDENCE
+        insufficient_reason = InsufficientReason.EVIDENCE_INCONCLUSIVE
         grade = GradeCertainty.VERY_LOW
     else:
         # Shares are taken over directional evidence only, so the amount of
@@ -82,6 +132,8 @@ def aggregate(
         claim=claim,
         pico=PICOClaim(raw_claim=claim),
         verdict=verdict,
+        insufficient_reason=insufficient_reason,
+        coverage=coverage,
         grade_certainty=grade,
         support_count=len(support),
         contradict_count=len(contradict),
@@ -116,6 +168,18 @@ def _adjust_grade(
     if n == settings.MIN_RELEVANT_SOURCES:
         grade = _shift(grade, -1)
     return grade
+
+
+def _build_not_covered_explanation(coverage: CoverageSignals) -> str:
+    return (
+        f"No assessment was made: this claim does not appear to be about "
+        f"anything in the corpus. The closest passage scored {coverage.max_cosine:.3f} "
+        f"cosine similarity against the claim (floor {settings.MIN_MAX_COSINE:.3f}), "
+        f"and the top {coverage.top_k} averaged {coverage.mean_topk_cosine:.3f} "
+        f"(floor {settings.MIN_MEAN_TOPK_COSINE:.3f}). These are absolute "
+        f"similarities, not ranks, so they measure whether relevant material "
+        f"exists at all rather than which passage happened to rank first."
+    )
 
 
 def _build_explanation(
