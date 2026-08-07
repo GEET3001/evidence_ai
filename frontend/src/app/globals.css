@@ -1,26 +1,159 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Design tokens.
+ *
+ * Three typefaces, each carrying a meaning rather than a mood:
+ *   --font-display  chrome and labels we wrote
+ *   --font-body     text quoted out of a source paper
+ *   --font-mono     values the pipeline computed
+ * The results view holds that rule everywhere, so a reader can tell where a
+ * piece of text came from without being told.
+ *
+ * Support/contradict are blue and rust rather than green and red: contradicting
+ * evidence is not a bad outcome, and the traffic-light pair implies it is. The
+ * chosen pair is also distinguishable under the common colour-vision
+ * deficiencies.
+ */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --paper: #eef1f5;
+  --surface: #ffffff;
+  --surface-sunk: #e5e9f0;
+  --ink: #0f1620;
+  --ink-muted: #56616f;
+  --ink-faint: #7d8896;
+  --rule: #d2d9e2;
+  --rule-strong: #b4bfcc;
+
+  --support: #15628f;
+  --support-soft: #dceaf4;
+  --contradict: #a6491b;
+  --contradict-soft: #f7e6da;
+  --neutral: #5d6977;
+  --neutral-soft: #e6eaef;
+
+  /* A verdict the pipeline actually issued sits on a dark field. The absence of
+     one never does — see .hatch. */
+  --banner: #0f1620;
+  --banner-ink: #edf1f6;
+  --banner-muted: #9aa6b4;
+  --banner-rule: #2a3442;
+
+  --warn: #8c2f2f;
+  --warn-soft: #f8e4e4;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #0b0f15;
+    --surface: #131a23;
+    --surface-sunk: #0f151d;
+    --ink: #e4eaf1;
+    --ink-muted: #94a1b0;
+    --ink-faint: #6b7887;
+    --rule: #232c38;
+    --rule-strong: #35424f;
+
+    --support: #6fb6e4;
+    --support-soft: #12293a;
+    --contradict: #e0925e;
+    --contradict-soft: #33210f;
+    --neutral: #93a0b0;
+    --neutral-soft: #1c242e;
+
+    --banner: #182130;
+    --banner-ink: #edf1f6;
+    --banner-muted: #97a4b3;
+    --banner-rule: #2c3849;
+
+    --warn: #e98080;
+    --warn-soft: #38191a;
   }
 }
 
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunk: var(--surface-sunk);
+  --color-ink: var(--ink);
+  --color-muted: var(--ink-muted);
+  --color-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+
+  --color-support: var(--support);
+  --color-support-soft: var(--support-soft);
+  --color-contradict: var(--contradict);
+  --color-contradict-soft: var(--contradict-soft);
+  --color-neutral: var(--neutral);
+  --color-neutral-soft: var(--neutral-soft);
+
+  --color-banner: var(--banner);
+  --color-banner-ink: var(--banner-ink);
+  --color-banner-muted: var(--banner-muted);
+  --color-banner-rule: var(--banner-rule);
+
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+
+  --font-display: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-source-serif), ui-serif, Georgia, serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* An unfilled cell in a data table, borrowed literally: the pipeline declined
+   to answer, so the field it would have answered in is left ruled but empty. */
+.hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--rule) 0 1px,
+    transparent 1px 9px
+  );
+}
+
+/* Indeterminate, because the API returns one response and genuinely cannot
+   report where it is. A bar that filled to 90% would be inventing progress. */
+@keyframes sweep {
+  0% {
+    transform: translateX(-60%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+.sweep::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inline-size: 40%;
+  background: var(--ink);
+  animation: sweep 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .sweep::after {
+    inline-size: 100%;
+    opacity: 0.35;
+  }
 }

@@ -20,6 +20,32 @@ export type Verdict =
   | "CONFLICTING"
   | "INSUFFICIENT_EVIDENCE";
 
+/**
+ * Why a verdict came back INSUFFICIENT_EVIDENCE. Both are the same verdict to
+ * the caller; they differ in what went wrong, and the UI must not conflate them.
+ */
+export type InsufficientReason =
+  /** Nothing in the corpus is about this claim at all. */
+  | "NOT_COVERED_BY_CORPUS"
+  /** The corpus covers it, but too few sources qualified or none had a direction. */
+  | "EVIDENCE_INCONCLUSIVE";
+
+/**
+ * Raw retrieval signals, computed before normalisation and therefore comparable
+ * across claims — unlike `EvidenceItem.relevance_score`, which is min-max
+ * normalised per query. These are what the corpus-coverage gate thresholds.
+ */
+export interface CoverageSignals {
+  /** Highest raw claim-passage cosine in the corpus. */
+  max_cosine: number;
+  /** Mean raw cosine over the top-k passages by cosine. */
+  mean_topk_cosine: number;
+  /** Highest raw BM25 score in the corpus. Diagnostic only; not gated on. */
+  top_bm25: number;
+  /** k used for mean_topk_cosine. */
+  top_k: number;
+}
+
 export type GradeCertainty = "HIGH" | "MODERATE" | "LOW" | "VERY_LOW";
 
 export type PublicationTier =
@@ -114,6 +140,10 @@ export interface VerdictResponse {
   claim: string;
   pico: PICOClaim;
   verdict: Verdict;
+  /** Set only when verdict is INSUFFICIENT_EVIDENCE. */
+  insufficient_reason: InsufficientReason | null;
+  /** Absolute retrieval signals behind the corpus-coverage gate. */
+  coverage: CoverageSignals | null;
   grade_certainty: GradeCertainty;
   support_count: number;
   contradict_count: number;

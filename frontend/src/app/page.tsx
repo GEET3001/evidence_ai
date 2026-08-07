@@ -1,85 +1,146 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useCallback, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { ErrorState, type ErrorKind } from "@/components/ErrorState";
+import { VerifyingState } from "@/components/VerifyingState";
+import { ResultsView } from "@/components/results/ResultsView";
 import { ApiError, verifyClaim } from "@/lib/api";
 import type { VerdictResponse } from "@/types";
+
+const EXAMPLE_CLAIMS = [
+  "Mindfulness-based interventions reduce ADHD symptoms in adults",
+  "Exercise is as effective as antidepressants for major depression",
+  "Eating chocolate cake improves stock market forecasting",
+];
+
+interface FailedRequest {
+  kind: ErrorKind;
+  detail: string;
+}
 
 export default function Home() {
   const [claim, setClaim] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FailedRequest | null>(null);
   const [result, setResult] = useState<VerdictResponse | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const canSubmit = claim.trim().length > 0 && !loading;
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!canSubmit) return;
+  const runVerification = useCallback(async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
 
     setLoading(true);
     setError(null);
     setResult(null);
 
     try {
-      setResult(await verifyClaim(claim.trim()));
+      setResult(await verifyClaim(trimmed));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something unexpected went wrong.");
+      setError(
+        err instanceof ApiError
+          ? { kind: err.kind, detail: err.message }
+          : { kind: "unknown", detail: String(err) }
+      );
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!loading) void runVerification(claim);
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      if (!loading) void runVerification(claim);
+    }
+  }
+
+  function fillFromExample(example: string) {
+    setClaim(example);
+    inputRef.current?.focus();
+  }
+
+  const canSubmit = claim.trim().length > 0 && !loading;
+  const showEmptyState = !loading && !error && !result;
+
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Verify a research claim
-        </h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Enter a claim about mental health research and EvidenceAI will retrieve
-          and classify relevant evidence from its corpus.
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 py-10">
+      <header>
+        <p className="font-mono text-[11px] font-semibold tracking-[0.18em] text-faint uppercase">
+          EvidenceAI
         </p>
-      </div>
+        <h1 className="mt-2 max-w-2xl text-2xl leading-tight font-semibold tracking-tight text-balance text-ink sm:text-3xl">
+          Check a research claim against the mental health literature.
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
+          Every verdict below is traceable to the passages it came from and the
+          counts it was computed from.
+        </p>
+      </header>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <textarea
-          value={claim}
-          onChange={(e) => setClaim(e.target.value)}
-          placeholder="Mindfulness meditation reduces anxiety in college students"
-          rows={4}
-          className="w-full resize-none rounded-md border border-zinc-300 p-3 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-        />
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-900"
+        <label
+          htmlFor="claim"
+          className="font-mono text-[10px] font-semibold tracking-[0.14em] text-faint uppercase"
         >
-          {loading ? "Verifying…" : "Verify"}
-        </button>
+          Claim
+        </label>
+        <textarea
+          id="claim"
+          ref={inputRef}
+          value={claim}
+          onChange={(event) => setClaim(event.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Mindfulness meditation reduces anxiety in college students"
+          rows={3}
+          className="w-full resize-y rounded-lg border border-rule bg-surface p-4 font-body text-[15px] leading-relaxed text-ink placeholder:text-faint focus:border-ink focus:outline-none"
+        />
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="rounded bg-ink px-5 py-2.5 text-sm font-medium text-paper transition-opacity disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            {loading ? "Verifying…" : "Verify claim"}
+          </button>
+          <span className="font-mono text-[11px] text-faint">⌘/Ctrl + Enter</span>
+        </div>
       </form>
 
-      {loading && (
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Retrieving and classifying evidence — this can take a few seconds.
-        </p>
-      )}
-
-      {error && (
-        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
-          {error}
+      {showEmptyState ? (
+        <div className="border-t border-rule pt-6">
+          <p className="font-mono text-[10px] font-semibold tracking-[0.14em] text-faint uppercase">
+            Or start from one of these
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {EXAMPLE_CLAIMS.map((example) => (
+              <button
+                key={example}
+                type="button"
+                onClick={() => fillFromExample(example)}
+                className="rounded border border-rule bg-surface px-3 py-2 text-left font-body text-sm text-muted transition-colors hover:border-ink hover:text-ink"
+              >
+                {example}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
+      ) : null}
 
-      {result && (
-        <div className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Raw response (temporary — the real results UI is a later task)
-          </h2>
-          <pre className="max-h-[600px] overflow-auto rounded-md bg-zinc-100 p-3 text-xs text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        </div>
-      )}
+      {loading ? <VerifyingState /> : null}
+
+      {error ? (
+        <ErrorState
+          kind={error.kind}
+          detail={error.detail}
+          onRetry={() => void runVerification(claim)}
+        />
+      ) : null}
+
+      {result ? <ResultsView result={result} /> : null}
     </main>
   );
 }

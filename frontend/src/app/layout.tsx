@@ -1,15 +1,21 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Mono, Instrument_Sans, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const instrumentSans = Instrument_Sans({
+  variable: "--font-instrument-sans",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const sourceSerif = Source_Serif_4({
+  variable: "--font-source-serif",
   subsets: ["latin"],
+});
+
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -25,12 +31,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${instrumentSans.variable} ${sourceSerif.variable} ${plexMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <div className="bg-amber-50 px-6 py-2 text-center text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          Literature triage aid for researchers and students. Not a diagnostic or
-          treatment-advice tool.
+      <body className="flex min-h-full flex-col">
+        {/* Sticky so it stays on screen through a long results page, which is
+            the view where mistaking this for clinical advice would matter. */}
+        <div className="sticky top-0 z-50 border-b border-rule bg-sunk/95 backdrop-blur">
+          <p className="mx-auto max-w-5xl px-6 py-2 font-mono text-[11px] leading-relaxed tracking-wide text-muted">
+            <span className="font-semibold text-ink">SCOPE</span> — Literature triage
+            aid for researchers and students. Not a diagnostic or treatment-advice
+            tool.
+          </p>
         </div>
         {children}
       </body>
