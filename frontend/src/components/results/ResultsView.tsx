@@ -1,6 +1,7 @@
 import { formatSeconds } from "@/lib/verdict-display";
 import type { VerdictResponse } from "@/types";
 import { ConflictingFindings } from "./ConflictingFindings";
+import { DownloadReport } from "./DownloadReport";
 import { EvidenceCounts } from "./EvidenceCounts";
 import { EvidenceList } from "./EvidenceList";
 import { ExplanationPanel } from "./ExplanationPanel";
@@ -69,6 +70,10 @@ export function ResultsView({ result }: { result: VerdictResponse }) {
           <EvidenceList evidence={result.evidence} />
         </Section>
       ) : null}
+
+      <Section label="Export" meta="The full analysis as a document">
+        <DownloadReport verificationId={result.verification_id} />
+      </Section>
 
       <Section label="Run">
         <dl className="flex flex-wrap gap-x-10 gap-y-3 font-mono text-[11px] text-muted">

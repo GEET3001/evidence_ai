@@ -18,11 +18,17 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
+    # --- Identity ---
+    # Quoted in generated reports and served by the API, so a report can be
+    # traced back to the version of the system that produced it.
+    APP_VERSION: str = "0.1.0"
+
     # --- Paths ---
     data_dir: Path = DATA_DIR
     raw_dir: Path = DATA_DIR / "raw"
     corpus_path: Path = DATA_DIR / "corpus.json"
     index_dir: Path = DATA_DIR / "index"
+    verifications_db_path: Path = DATA_DIR / "verifications.db"
 
     # --- NCBI E-utilities identification (see .env.example for how to get a free API key) ---
     NCBI_TOOL: str = "EvidenceAI"

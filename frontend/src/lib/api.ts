@@ -78,13 +78,83 @@ export function getVerification(id: string): Promise<VerdictResponse> {
   return request<VerdictResponse>(`/verify/${encodeURIComponent(id)}`);
 }
 
-/** GET /verify/{id}/report — trigger a browser download of the .docx report. */
-export function downloadReport(id: string): void {
-  const url = `${API_BASE_URL}/verify/${encodeURIComponent(id)}/report`;
-  const link = document.createElement("a");
-  link.href = url;
-  link.rel = "noopener";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+/** Filename from Content-Disposition, preferring the RFC 5987 encoded form. */
+function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      // Malformed percent-encoding — fall through to the plain form.
+    }
+  }
+
+  const plain = /filename="([^"]+)"/i.exec(header);
+  return plain ? plain[1] : null;
+}
+
+/**
+ * GET /verify/{id}/report — download the .docx report.
+ *
+ * Fetched as a blob rather than pointed at with an anchor. A bare navigation
+ * hands the URL to the browser, so a 404 or a 500 renders as a JSON error page
+ * in a new tab with no way for the app to notice; going through fetch keeps
+ * failures as ApiError and lets the UI report them where the user is.
+ */
+export async function downloadReport(id: string): Promise<void> {
+  const path = `/verify/${encodeURIComponent(id)}/report`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError("Generating the report took too long.", "timeout");
+    }
+    throw new ApiError(
+      `Could not reach the API at ${API_BASE_URL}. Is the backend running?`,
+      "network"
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const body = await response.json();
+      if (body?.detail) detail = String(body.detail);
+    } catch {
+      // Error body wasn't JSON — fall back to statusText.
+    }
+    throw new ApiError(
+      `Report download failed (${response.status}): ${detail}`,
+      "http",
+      response.status
+    );
+  }
+
+  const blob = await response.blob();
+  const filename =
+    filenameFromDisposition(response.headers.get("Content-Disposition")) ??
+    `evidenceai-report-${id}.docx`;
+
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    // Revoking immediately can cancel the download in some browsers; one turn
+    // of the event loop is enough for the click to have been handled.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
 }

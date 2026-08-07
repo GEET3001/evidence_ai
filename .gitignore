@@ -30,6 +30,10 @@ out/
 data/raw/
 data/index/
 data/scifact/
+# Runtime verdict store, written by POST /verify so reports can be exported later.
+data/verifications.db
+data/verifications.db-wal
+data/verifications.db-shm
 
 # --- Model checkpoints ---
 # STANCE_MODEL_PATH resolves here at runtime. The whole directory is ignored,
