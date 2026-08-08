@@ -1,0 +1,49 @@
+flowchart TB
+    classDef test fill:#eceff3,stroke:#3d5a80,stroke-width:1px,color:#12232e
+    classDef abstain fill:#eceff3,stroke:#7d8896,stroke-width:2px,color:#12232e,stroke-dasharray:5 3
+    classDef verdict fill:#dceaf4,stroke:#15628f,stroke-width:2px,color:#12232e
+    classDef conflict fill:#f7e6da,stroke:#a6491b,stroke-width:2px,color:#2e1c12
+    classDef grade fill:#ffffff,stroke:#7d8896,stroke-width:1px,color:#12232e
+
+    START(["claim + retrieved passages"]):::test
+
+    G1{"<b>Coverage gate</b><br/>max_cosine ≥ 0.911<br/><b>AND</b> mean_topk_cosine ≥ 0.905<br/><i>raw, pre-normalisation cosine</i>"}:::test
+    A1["<b>INSUFFICIENT_EVIDENCE</b><br/>reason = NOT_COVERED_BY_CORPUS<br/>certainty VERY_LOW<br/><br/>evidence list returned <b>empty</b><br/>classification never runs"]:::abstain
+
+    FILT["Keep passages with<br/>relevance_score ≥ 0.45<br/><i>= qualifying</i>"]:::test
+
+    G2{"len(qualifying) ≥ 3 ?"}:::test
+    A2["<b>INSUFFICIENT_EVIDENCE</b><br/>reason = EVIDENCE_INCONCLUSIVE<br/>certainty VERY_LOW<br/><br/><i>too little relevant material</i>"]:::abstain
+
+    G3{"support + contradict ≥ 1 ?<br/><i>any directional passage at all</i>"}:::test
+    A3["<b>INSUFFICIENT_EVIDENCE</b><br/>reason = EVIDENCE_INCONCLUSIVE<br/>certainty VERY_LOW<br/><br/><i>corpus covers it, but nothing<br/>retrieved took a side</i>"]:::abstain
+
+    SHARE["support_share = support / directional<br/>contradict_share = contradict / directional<br/><i>neutral excluded from the denominator</i>"]:::test
+
+    G4{"|support_share − contradict_share|<br/>≤ 0.10 ?"}:::test
+    V3["<b>CONFLICTING</b><br/>base certainty LOW"]:::conflict
+
+    G5{"support_share ><br/>contradict_share ?"}:::test
+    V1["<b>SUPPORTED</b><br/>base certainty MODERATE"]:::verdict
+    V2["<b>CONTRADICTED</b><br/>base certainty MODERATE"]:::verdict
+
+    ADJ["<b>Deterministic certainty adjustment</b><br/>+1 if ≥2 meta-analyses/systematic reviews AND ≥5 directional<br/>−1 if &gt;50% low-tier or unclassified<br/>−1 if &gt;30% preprints<br/>−1 if qualifying count sits exactly at the floor of 3<br/><i>clamped to VERY_LOW … HIGH</i>"]:::grade
+    OUT(["verdict + certainty + explanation + limitations"]):::grade
+
+    START --> G1
+    G1 -->|"no"| A1
+    G1 -->|"yes"| FILT --> G2
+    G2 -->|"no"| A2
+    G2 -->|"yes"| G3
+    G3 -->|"no"| A3
+    G3 -->|"yes"| SHARE --> G4
+    G4 -->|"yes — a tie"| V3
+    G4 -->|"no"| G5
+    G5 -->|"yes"| V1
+    G5 -->|"no"| V2
+    V1 --> ADJ
+    V2 --> ADJ
+    V3 --> ADJ
+    ADJ --> OUT
+
+    linkStyle default stroke:#7d8896

@@ -16,8 +16,17 @@ advice, and not intended for patients making care decisions.** Verdicts
 reflect what the retrieved literature says, not clinical guidance — always
 consult a qualified professional for health decisions.
 
-See [`docs/architecture.md`](docs/architecture.md) for the pipeline design and
-the reasoning behind the main technical choices.
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | Pipeline design, the offline/online split, and the reasoning behind every significant technical choice. |
+| [`docs/final-report.md`](docs/final-report.md) | The full write-up: corpus construction, methodology, the coverage gate, the fine-tuning experiment, evaluation, limitations, future work. |
+| [`docs/demo-script.md`](docs/demo-script.md) | Demo video shot list, with the pre-recording checklist. |
+| [`docs/diagrams/`](docs/diagrams/) | Mermaid source and rendered PNGs for the architecture and verdict-decision-tree diagrams. |
+| [`eval/README.md`](eval/README.md) | The evaluation harness and the labelling workflow. |
+
+![Architecture](docs/diagrams/architecture.png)
 
 ## Project Structure
 
@@ -31,18 +40,28 @@ evidenceai/
 │   │   ├── ingestion/         # scrapers + API clients
 │   │   ├── indexing/          # chunking, embedding, FAISS
 │   │   └── pipeline/          # retrieval, classification, aggregation
+│   │   ├── reporting/         # .docx report generation
+│   │   └── storage.py         # SQLite verdict store
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/                  # Next.js app
 ├── data/
 │   ├── raw/                   # scraped HTML/JSON, untouched (gitignored)
 │   ├── corpus.json            # cleaned papers (committed)
-│   └── index/                 # FAISS index + metadata lookup (gitignored)
+│   ├── index/                 # FAISS index + metadata lookup (gitignored)
+│   └── verifications.db       # verdict store, written at runtime (gitignored)
 ├── eval/
-│   ├── claims.csv             # hand-labelled eval claims (committed)
+│   ├── claims.csv             # 50 candidate claims (labels filled in by hand)
+│   ├── relevance.csv          # optional per-(claim,paper) retrieval judgments
+│   ├── stance_labels.csv      # optional per-(claim,passage) stance labels
+│   ├── run_evaluation.py      # the harness
+│   ├── propose_candidates.py  # drafts candidates + surfaces their papers
 │   └── results/
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   ├── final-report.md
+│   ├── demo-script.md
+│   └── diagrams/              # .mmd source + rendered .png
 └── notebooks/                 # data prep + Colab training
 ```
 
@@ -82,7 +101,10 @@ npm run dev
 
 The app will be available at `http://localhost:3000`.
 
-## Running a demo
+## Demo Mode
+
+Full shot list and the complete pre-recording checklist:
+[`docs/demo-script.md`](docs/demo-script.md).
 
 Use `.\demo.ps1` rather than `.\dev.ps1`; it starts uvicorn without `--reload`,
 which removes the reload watcher's second process and its restart cycles.

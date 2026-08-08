@@ -1,0 +1,56 @@
+flowchart LR
+    classDef offline fill:#e8eef6,stroke:#3d5a80,stroke-width:1px,color:#12232e
+    classDef online fill:#fdeee2,stroke:#a6491b,stroke-width:1px,color:#2e1c12
+    classDef store fill:#eceff3,stroke:#7d8896,stroke-width:1px,color:#12232e,stroke-dasharray:4 3
+    classDef client fill:#ffffff,stroke:#0f1620,stroke-width:1.5px,color:#0f1620
+
+    subgraph OFFLINE["OFFLINE · built once, by hand · no part of this runs per request"]
+        direction TB
+        SRC["PubMed E-utilities<br/>PMC · PsyArXiv"]:::offline
+        CONT["Contested-topic retrieval<br/>5 topics × 2 opposed queries"]:::offline
+        MERGE["Merge + dedupe<br/>DOI and fuzzy title"]:::offline
+        ENRICH["OpenAlex enrichment<br/>retraction · OA · citations"]:::offline
+        VALID["Corpus validation<br/>PASS/FAIL report"]:::offline
+        CHUNK["Sentence-aligned chunking<br/>256 tok / 32 overlap<br/><b>retracted papers dropped</b>"]:::offline
+        EMBED["Embed passages<br/>S-PubMedBert-MS-MARCO"]:::offline
+
+        SRC --> MERGE
+        CONT --> MERGE
+        MERGE --> ENRICH --> VALID --> CHUNK --> EMBED
+    end
+
+    CORPUS[("corpus.json<br/>183 papers")]:::store
+    INDEX[("FAISS IndexFlatIP<br/>446 passages")]:::store
+
+    ENRICH -.-> CORPUS
+    EMBED -.-> INDEX
+
+    subgraph ONLINE["ONLINE · every POST /verify · no network calls"]
+        direction TB
+        RET["<b>1 · Retrieve</b><br/>BM25 + dense cosine over<br/><i>all</i> passages, fused 0.4/0.6<br/>after per-query min-max norm"]:::online
+        GATE{"<b>2 · Coverage gate</b><br/><i>raw pre-norm cosine</i><br/>max ≥ 0.911 AND<br/>mean-top-10 ≥ 0.905"}:::online
+        STANCE["<b>3 · Classify</b><br/>bart-large-mnli, per passage<br/>passage = premise<br/>claim = hypothesis<br/>per-sentence rescore → rationale"]:::online
+        AGG["<b>4 · Aggregate</b><br/>counts over directional only<br/>thresholds → verdict<br/>tier mix → GRADE certainty"]:::online
+        EXPL["<b>5 · Explain</b><br/>assembled from counts and<br/>quoted rationale sentences<br/><i>no text generation</i>"]:::online
+
+        RET --> GATE
+        GATE -->|"covered"| STANCE --> AGG --> EXPL
+        GATE -->|"not covered<br/>classification skipped"| EXPL
+    end
+
+    UI["Next.js<br/>results screen"]:::client
+    RESP["VerdictResponse"]:::client
+    DB[("SQLite store<br/>verifications.db")]:::store
+    DOCX["GET /verify/{id}/report<br/>.docx via python-docx"]:::client
+
+    UI -->|"POST /verify"| RET
+    CORPUS -.->|"loaded at startup"| RET
+    INDEX -.->|"loaded at startup"| RET
+    EXPL --> RESP
+    RESP --> UI
+    RESP --> DB
+    DB --> DOCX
+
+    style OFFLINE fill:#f7f9fc,stroke:#3d5a80,stroke-width:1.5px,color:#3d5a80
+    style ONLINE fill:#fffaf6,stroke:#a6491b,stroke-width:1.5px,color:#a6491b
+    linkStyle default stroke:#7d8896
