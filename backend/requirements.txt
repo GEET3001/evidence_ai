@@ -29,5 +29,10 @@ scikit-learn>=1.6.0
 # --- Reporting ---
 python-docx==1.2.0  # .docx export for GET /verify/{id}/report
 
+# --- Evaluation ---
+# Used only by eval/run_evaluation.py, for the confusion-matrix PNG. Not
+# imported by the API, so a missing matplotlib cannot affect serving.
+matplotlib>=3.9.0
+
 # --- Ops ---
 psutil>=6.0.0
